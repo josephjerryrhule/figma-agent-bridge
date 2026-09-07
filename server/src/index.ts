@@ -24,20 +24,30 @@ program
     const bridgeOnly = !!options.bridgeOnly;
 
     // Create Bridge
-    const wsBridge = new WebSocketBridge();
+    const wsBridge = new WebSocketBridge(undefined, port);
 
     // Create combined HTTP & WebSocket server
     const server = http.createServer(createHttpHandler(wsBridge, port));
     wsBridge.attachToServer(server);
 
-    server.listen(port, () => {
-      console.error(`⚡ [figma-agent-bridge]: Server running at http://localhost:${port}`);
-      console.error(`🔌 [figma-agent-bridge]: WebSocket bridge listening on ws://localhost:${port}`);
-      console.error(`📖 [figma-agent-bridge]: OpenAPI spec available at http://localhost:${port}/openapi.json`);
-      if (bridgeOnly) {
-        console.error(`🚀 [figma-agent-bridge]: Running in bridge-only mode (HTTP + WebSocket).`);
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`ℹ️ [figma-agent-bridge]: Port ${port} is already in use. Connected to existing bridge.`);
+      } else {
+        console.error('Server error:', err);
       }
     });
+
+    try {
+      server.listen(port, () => {
+        console.error(`⚡ [figma-agent-bridge]: Server running at http://localhost:${port}`);
+        console.error(`🔌 [figma-agent-bridge]: WebSocket bridge listening on ws://localhost:${port}`);
+        console.error(`📖 [figma-agent-bridge]: OpenAPI spec available at http://localhost:${port}/openapi.json`);
+        if (bridgeOnly) {
+          console.error(`🚀 [figma-agent-bridge]: Running in bridge-only mode (HTTP + WebSocket).`);
+        }
+      });
+    } catch (_) {}
 
     // Start MCP Stdio Server if not in bridge-only mode
     if (!bridgeOnly) {
@@ -51,7 +61,6 @@ program
 
     // Graceful shutdown
     const cleanup = () => {
-      console.error('\n[figma-agent-bridge]: Shutting down server...');
       wsBridge.close();
       server.close(() => {
         process.exit(0);
