@@ -6,6 +6,8 @@
 import http from 'node:http';
 import { WebSocketBridge } from '../ws-bridge.js';
 import { getOpenApiSpec } from './openapi.js';
+import { resolveMediaPayload, resolveLayoutTreeMedia, resolveUpdateNodeMedia } from '../shared/media-resolver.js';
+import { processExportResult, processScreenshotResult } from '../shared/export-saver.js';
 
 export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) {
   return async (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -78,14 +80,28 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
     };
 
     try {
+      const agentHeader = req.headers['x-agent-name'] as string | undefined;
+      const queryAgent = url.searchParams.get('agent');
+      const userAgent = req.headers['user-agent'] || '';
+      let agent = agentHeader || queryAgent;
+      if (!agent) {
+        if (userAgent.includes('ChatGPT') || userAgent.includes('OpenAI')) {
+          agent = 'ChatGPT';
+        } else if (userAgent.includes('curl')) {
+          agent = 'CLI / Terminal';
+        } else {
+          agent = 'Codex';
+        }
+      }
+
       if (req.method === 'GET' && pathname === '/v1/selection') {
-        const data = await wsBridge.sendCommand('GET_SELECTION', { depth: 3 });
+        const data = await wsBridge.sendCommand('GET_SELECTION', { depth: 3 }, 20000, agent);
         sendJson(200, { success: true, data });
         return;
       }
 
       if (req.method === 'GET' && pathname === '/v1/document') {
-        const data = await wsBridge.sendCommand('GET_DOCUMENT_INFO', {});
+        const data = await wsBridge.sendCommand('GET_DOCUMENT_INFO', {}, 20000, agent);
         sendJson(200, { success: true, data });
         return;
       }
@@ -95,13 +111,13 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
 
         switch (pathname) {
           case '/v1/inspect': {
-            const data = await wsBridge.sendCommand('INSPECT_NODE', body);
+            const data = await wsBridge.sendCommand('INSPECT_NODE', body, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/find': {
-            const data = await wsBridge.sendCommand('FIND_NODES', body);
+            const data = await wsBridge.sendCommand('FIND_NODES', body, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }
@@ -111,7 +127,8 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "root" layout specification in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('RENDER_LAYOUT', body);
+            body.root = await resolveLayoutTreeMedia(body.root);
+            const data = await wsBridge.sendCommand('RENDER_LAYOUT', body, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }
@@ -121,7 +138,8 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Must provide target node "id" or "name" in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('UPDATE_NODE', body);
+            const resolvedBody = await resolveUpdateNodeMedia(body);
+            const data = await wsBridge.sendCommand('UPDATE_NODE', resolvedBody, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }
@@ -131,7 +149,10 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "parentId" or "children" array in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('APPEND_CHILDREN', body);
+            for (let i = 0; i < body.children.length; i++) {
+              body.children[i] = await resolveLayoutTreeMedia(body.children[i]);
+            }
+            const data = await wsBridge.sendCommand('APPEND_CHILDREN', body, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }
@@ -141,7 +162,21 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "parentId" or "children" array in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('REPLACE_CHILDREN', body);
+            for (let i = 0; i < body.children.length; i++) {
+              body.children[i] = await resolveLayoutTreeMedia(body.children[i]);
+            }
+            const data = await wsBridge.sendCommand('REPLACE_CHILDREN', body, 20000, agent);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/media': {
+            if (!body.mediaType || !body.source) {
+              sendJson(400, { success: false, error: 'Missing "mediaType" (IMAGE|SVG|VIDEO|GIF) or "source" in body' });
+              return;
+            }
+            const resolvedPayload = await resolveMediaPayload(body);
+            const data = await wsBridge.sendCommand('INSERT_MEDIA', resolvedPayload, 25000, agent);
             sendJson(200, { success: true, data });
             return;
           }
@@ -151,13 +186,31 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "ids" array in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('DELETE_NODES', body);
+            const data = await wsBridge.sendCommand('DELETE_NODES', body, 20000, agent);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/duplicate': {
+            if (!body.nodeId) {
+              sendJson(400, { success: false, error: 'Missing "nodeId" in body' });
+              return;
+            }
+            const data = await wsBridge.sendCommand('DUPLICATE_NODE', body, 20000, agent);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/export': {
+            const rawData = await wsBridge.sendCommand('EXPORT_NODES', body, 60000, agent);
+            const data = await processExportResult(rawData, body);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/screenshot': {
-            const data = await wsBridge.sendCommand('CAPTURE_SCREENSHOT', body);
+            const rawData = await wsBridge.sendCommand('CAPTURE_SCREENSHOT', body, 25000, agent);
+            const data = await processScreenshotResult(rawData, body);
             sendJson(200, { success: true, data });
             return;
           }
@@ -167,19 +220,19 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "code" in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('EXECUTE_CODE', body);
+            const data = await wsBridge.sendCommand('EXECUTE_CODE', body, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/undo': {
-            const data = await wsBridge.sendCommand('UNDO', {});
+            const data = await wsBridge.sendCommand('UNDO', {}, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/redo': {
-            const data = await wsBridge.sendCommand('REDO', {});
+            const data = await wsBridge.sendCommand('REDO', {}, 20000, agent);
             sendJson(200, { success: true, data });
             return;
           }

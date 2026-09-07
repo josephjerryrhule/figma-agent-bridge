@@ -3,7 +3,17 @@
  * Translates modern flexbox-style JSON layout trees into native Figma Auto Layout node structures.
  */
 
-import { LayoutNode, FrameLayoutNode, TextLayoutNode, ShapeLayoutNode, RenderLayoutPayload, SerializedNodeInfo } from '../types';
+import {
+  LayoutNode,
+  FrameLayoutNode,
+  TextLayoutNode,
+  ShapeLayoutNode,
+  ImageLayoutNode,
+  SvgLayoutNode,
+  VideoLayoutNode,
+  RenderLayoutPayload,
+  SerializedNodeInfo
+} from '../types';
 import { createSolidPaint } from './colors';
 import { ensureFontLoaded } from './fonts';
 import { serializeNode } from './inspector';
@@ -19,6 +29,12 @@ export async function createNodeFromLayout(spec: LayoutNode): Promise<SceneNode>
       return createRectangleNode(spec);
     case 'ELLIPSE':
       return createEllipseNode(spec);
+    case 'IMAGE':
+      return createImageNode(spec);
+    case 'SVG':
+      return createSvgNode(spec);
+    case 'VIDEO':
+      return createVideoNode(spec);
     case 'FRAME':
     default:
       return createFrameNode(spec);
@@ -105,6 +121,138 @@ function createEllipseNode(spec: ShapeLayoutNode): EllipseNode {
   }
 
   return ellipse;
+}
+
+async function createImageNode(spec: ImageLayoutNode): Promise<RectangleNode> {
+  const rect = figma.createRectangle();
+  if (spec.name) rect.name = spec.name;
+  const width = typeof spec.width === 'number' ? spec.width : 200;
+  const height = typeof spec.height === 'number' ? spec.height : 200;
+  rect.resize(width, height);
+
+  if (spec.base64) {
+    try {
+      const bytes = figma.base64Decode(spec.base64);
+      const image = figma.createImage(bytes);
+      rect.fills = [{
+        type: 'IMAGE',
+        imageHash: image.hash,
+        scaleMode: spec.scaleMode || 'FILL'
+      }];
+    } catch (e: any) {
+      console.warn('Failed to decode/create image fill:', e);
+      rect.fills = createSolidPaint('#E2E8F0');
+    }
+  } else {
+    rect.fills = createSolidPaint('#E2E8F0');
+  }
+
+  if (spec.cornerRadius) {
+    if (typeof spec.cornerRadius === 'number') {
+      rect.cornerRadius = spec.cornerRadius;
+    } else if (Array.isArray(spec.cornerRadius)) {
+      rect.topLeftRadius = spec.cornerRadius[0] ?? 0;
+      rect.topRightRadius = spec.cornerRadius[1] ?? 0;
+      rect.bottomRightRadius = spec.cornerRadius[2] ?? 0;
+      rect.bottomLeftRadius = spec.cornerRadius[3] ?? 0;
+    }
+  }
+
+  if (spec.stroke) {
+    rect.strokes = createSolidPaint(spec.stroke.color);
+    if (spec.stroke.weight) rect.strokeWeight = spec.stroke.weight;
+  }
+
+  if (spec.opacity !== undefined) {
+    rect.opacity = spec.opacity;
+  }
+
+  if (spec.visible !== undefined) {
+    rect.visible = spec.visible;
+  }
+
+  if (spec.x !== undefined && spec.y !== undefined) {
+    rect.x = spec.x;
+    rect.y = spec.y;
+  }
+
+  return rect;
+}
+
+async function createSvgNode(spec: SvgLayoutNode): Promise<SceneNode> {
+  const svg = spec.svg || '<svg viewBox="0 0 24 24"></svg>';
+  const node = figma.createNodeFromSvg(svg);
+  if (spec.name) node.name = spec.name;
+
+  if (spec.width && spec.height) {
+    node.resize(spec.width, spec.height);
+  }
+
+  if (spec.opacity !== undefined) {
+    node.opacity = spec.opacity;
+  }
+
+  if (spec.visible !== undefined) {
+    node.visible = spec.visible;
+  }
+
+  if (spec.x !== undefined && spec.y !== undefined) {
+    node.x = spec.x;
+    node.y = spec.y;
+  }
+
+  return node;
+}
+
+async function createVideoNode(spec: VideoLayoutNode): Promise<RectangleNode> {
+  const rect = figma.createRectangle();
+  if (spec.name) rect.name = spec.name;
+  const width = typeof spec.width === 'number' ? spec.width : 400;
+  const height = typeof spec.height === 'number' ? spec.height : 225;
+  rect.resize(width, height);
+
+  if (spec.base64) {
+    try {
+      const bytes = figma.base64Decode(spec.base64);
+      const video = await figma.createVideoAsync(bytes);
+      rect.fills = [{
+        type: 'VIDEO',
+        videoHash: video.hash,
+        scaleMode: spec.scaleMode || 'FILL'
+      }];
+    } catch (e: any) {
+      console.warn('Figma video creation failed, using placeholder:', e);
+      rect.fills = createSolidPaint('#0F172A');
+    }
+  } else {
+    rect.fills = createSolidPaint('#0F172A');
+  }
+
+  if (spec.cornerRadius) {
+    if (typeof spec.cornerRadius === 'number') {
+      rect.cornerRadius = spec.cornerRadius;
+    } else if (Array.isArray(spec.cornerRadius)) {
+      rect.topLeftRadius = spec.cornerRadius[0] ?? 0;
+      rect.topRightRadius = spec.cornerRadius[1] ?? 0;
+      rect.bottomRightRadius = spec.cornerRadius[2] ?? 0;
+      rect.bottomLeftRadius = spec.cornerRadius[3] ?? 0;
+    }
+  }
+
+  if (spec.opacity !== undefined) {
+    rect.opacity = spec.opacity;
+  }
+
+  if (spec.visible !== undefined) {
+    rect.visible = spec.visible;
+  }
+
+  if (spec.x !== undefined && spec.y !== undefined) {
+    rect.x = spec.x;
+    rect.y = spec.y;
+  }
+
+  return rect;
 }
 
 async function createFrameNode(spec: FrameLayoutNode): Promise<FrameNode> {

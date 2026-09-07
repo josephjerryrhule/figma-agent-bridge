@@ -86,6 +86,44 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       fill: z.string().optional().describe('Fill color hex'),
       opacity: z.number().min(0).max(1).optional(),
       stroke: z.object({ color: z.string(), weight: z.number().optional() }).optional()
+    }),
+
+    // IMAGE
+    z.object({
+      type: z.literal('IMAGE'),
+      name: z.string().optional(),
+      url: z.string().optional().describe('URL (https://...) or local file path to image'),
+      base64: z.string().optional().describe('Raw base64 data string'),
+      width: z.number().optional().describe('Width in px'),
+      height: z.number().optional().describe('Height in px'),
+      scaleMode: z.enum(['FILL', 'FIT', 'CROP', 'TILE']).optional().default('FILL'),
+      cornerRadius: z.union([z.number(), z.array(z.number())]).optional(),
+      stroke: z.object({ color: z.string(), weight: z.number().optional() }).optional(),
+      opacity: z.number().min(0).max(1).optional()
+    }),
+
+    // SVG
+    z.object({
+      type: z.literal('SVG'),
+      name: z.string().optional(),
+      svg: z.string().optional().describe('Raw SVG markup string (e.g. <svg>...</svg>)'),
+      url: z.string().optional().describe('URL or file path to .svg file'),
+      width: z.number().optional().describe('Width in px'),
+      height: z.number().optional().describe('Height in px'),
+      opacity: z.number().min(0).max(1).optional()
+    }),
+
+    // VIDEO
+    z.object({
+      type: z.literal('VIDEO'),
+      name: z.string().optional(),
+      url: z.string().optional().describe('URL (https://...) or local file path to video (.mp4/.mov)'),
+      base64: z.string().optional().describe('Raw base64 video data'),
+      width: z.number().optional().describe('Width in px'),
+      height: z.number().optional().describe('Height in px'),
+      scaleMode: z.enum(['FILL', 'FIT', 'CROP']).optional().default('FILL'),
+      cornerRadius: z.union([z.number(), z.array(z.number())]).optional(),
+      opacity: z.number().min(0).max(1).optional()
     })
   ])
 );
@@ -167,7 +205,8 @@ export const toolsDefinitions = [
       height: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional(),
       visible: z.boolean().optional(),
       x: z.number().optional(),
-      y: z.number().optional()
+      y: z.number().optional(),
+      imageUrl: z.string().optional().describe('Image URL or local file path to set as node fill')
     })
   },
   {
@@ -194,12 +233,54 @@ export const toolsDefinitions = [
     })
   },
   {
+    name: 'figma_duplicate_node',
+    description: 'Duplicates / clones any existing node, frame, component, or element on the Figma canvas, optionally adjusting its name, position, and placement.',
+    inputSchema: z.object({
+      nodeId: z.string().describe('ID of the node or frame to duplicate (e.g. "1:15")'),
+      name: z.string().optional().describe('Optional new name for the duplicated clone'),
+      x: z.number().optional().describe('Optional new X position on canvas'),
+      y: z.number().optional().describe('Optional new Y position on canvas'),
+      insertAfter: z.boolean().optional().default(true).describe('Whether to place the duplicate right after the original in layer ordering')
+    })
+  },
+  {
+    name: 'figma_insert_media',
+    description: 'Inserts images (PNG, JPEG, WebP), animated GIFs, vector SVGs, or videos (MP4, MOV) directly into Figma, or replaces an existing layer\'s fill. Supports web URLs, local file paths, raw SVG code, and base64.',
+    inputSchema: z.object({
+      mediaType: z.enum(['IMAGE', 'SVG', 'VIDEO', 'GIF']).describe('Type of media being inserted'),
+      source: z.string().describe('Media source: web URL (https://...), local path (/path/to/file.png), raw SVG (<svg>...), or base64 data string'),
+      name: z.string().optional().describe('Name for the media layer'),
+      width: z.number().optional().describe('Width in pixels (defaults based on media type)'),
+      height: z.number().optional().describe('Height in pixels (defaults based on media type)'),
+      x: z.number().optional().describe('Canvas X coordinate'),
+      y: z.number().optional().describe('Canvas Y coordinate'),
+      scaleMode: z.enum(['FILL', 'FIT', 'CROP', 'TILE']).optional().default('FILL').describe('Image or video scale mode'),
+      targetParentId: z.string().optional().describe('Parent Frame ID to nest media inside'),
+      targetNodeId: z.string().optional().describe('Existing node ID if you want to replace its fill with this image/video instead of creating a new layer'),
+      cornerRadius: z.number().optional().describe('Corner radius in pixels')
+    })
+  },
+  {
+    name: 'figma_export',
+    description: 'Exports frames, slides, components, or the canvas to PDF, PNG, JPG, or SVG files. Supports single node export, batch exporting an array of nodes, or exporting all top-level frames on the active page (e.g. pitch deck slides). Can save directly to disk at a specific file path or output directory.',
+    inputSchema: z.object({
+      format: z.enum(['PDF', 'PNG', 'JPG', 'SVG']).optional().default('PDF').describe('Export format (PDF for pitch decks/proposals, PNG/JPG for raster images, SVG for vectors)'),
+      nodeId: z.string().optional().describe('ID of specific node or frame to export (defaults to current selection or first frame)'),
+      nodeIds: z.array(z.string()).optional().describe('Array of node IDs to batch export multiple frames'),
+      exportAllFrames: z.boolean().optional().describe('If true, exports all top-level frames on the active page (e.g. all slides in a presentation deck)'),
+      scale: z.number().min(0.5).max(4).optional().describe('Resolution scale factor for PNG/JPG (default 2 for high-res retina, 1 for PDF/SVG)'),
+      savePath: z.string().optional().describe('Optional local file path to save a single exported document directly to disk (e.g. "~/Desktop/pitch_deck.pdf")'),
+      outputDir: z.string().optional().describe('Optional local directory path to save batch-exported frames into (e.g. "~/Desktop/slides/")')
+    })
+  },
+  {
     name: 'figma_capture_screenshot',
-    description: 'Captures and returns a high-resolution PNG or SVG image of any frame, node, or selection for visual AI inspection and critique.',
+    description: 'Captures and returns a high-resolution PNG, JPG, SVG, or PDF of any frame, node, or selection for visual AI inspection and critique, optionally saving to disk.',
     inputSchema: z.object({
       nodeId: z.string().optional().describe('Node ID to capture (defaults to current selection or active frame)'),
-      format: z.enum(['PNG', 'SVG']).optional().default('PNG'),
-      scale: z.number().min(0.5).max(4).optional().default(2).describe('Export scale factor (default 2 for high-res retina)')
+      format: z.enum(['PNG', 'SVG', 'PDF', 'JPG']).optional().default('PNG'),
+      scale: z.number().min(0.5).max(4).optional().default(2).describe('Export scale factor (default 2 for high-res retina)'),
+      savePath: z.string().optional().describe('Optional local file path to save screenshot directly to disk')
     })
   },
   {

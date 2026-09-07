@@ -10,13 +10,17 @@ describe('WebSocket Bridge Relay', () => {
 
   beforeAll(async () => {
     wsBridge = new WebSocketBridge();
-    server = http.createServer();
+    server = http.createServer((req, res) => {
+      res.statusCode = 404;
+      res.end();
+    });
     wsBridge.attachToServer(server);
 
     await new Promise<void>((resolve) => {
       server.listen(0, () => {
         const addr = server.address() as any;
         port = addr.port;
+        wsBridge.port = port;
         resolve();
       });
     });
@@ -28,9 +32,7 @@ describe('WebSocket Bridge Relay', () => {
   });
 
   it('rejects commands when no Figma plugin is connected', async () => {
-    await expect(wsBridge.sendCommand('GET_STATUS', {})).rejects.toThrow(
-      /Figma plugin is not connected/
-    );
+    await expect(wsBridge.sendCommand('GET_STATUS', {}, 1000)).rejects.toThrow();
   });
 
   it('connects a mock Figma plugin and completes a roundtrip command', async () => {

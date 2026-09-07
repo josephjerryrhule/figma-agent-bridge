@@ -14,6 +14,9 @@ export type BridgeCommandType =
   | 'APPEND_CHILDREN'
   | 'REPLACE_CHILDREN'
   | 'DELETE_NODES'
+  | 'DUPLICATE_NODE'
+  | 'INSERT_MEDIA'
+  | 'EXPORT_NODES'
   | 'CAPTURE_SCREENSHOT'
   | 'EXECUTE_CODE'
   | 'GET_SESSION_HISTORY'
@@ -25,10 +28,13 @@ export interface BridgeRequest<T = any> {
   command: BridgeCommandType;
   payload: T;
   timestamp: number;
+  agent?: string;
 }
 
 export interface BridgeResponse<T = any> {
   id: string;
+  command?: BridgeCommandType;
+  agent?: string;
   success: boolean;
   data?: T;
   error?: string;
@@ -107,7 +113,55 @@ export interface FrameLayoutNode extends BaseLayoutNode {
   children?: LayoutNode[];
 }
 
-export type LayoutNode = FrameLayoutNode | TextLayoutNode | ShapeLayoutNode;
+export interface ImageLayoutNode extends BaseLayoutNode {
+  type: 'IMAGE';
+  url?: string;
+  base64?: string;
+  width?: number;
+  height?: number;
+  scaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE';
+  cornerRadius?: number | [number, number, number, number];
+  stroke?: {
+    color: string;
+    weight?: number;
+    align?: 'INSIDE' | 'OUTSIDE' | 'CENTER';
+  };
+  opacity?: number;
+  x?: number;
+  y?: number;
+}
+
+export interface SvgLayoutNode extends BaseLayoutNode {
+  type: 'SVG';
+  svg?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+  opacity?: number;
+  x?: number;
+  y?: number;
+}
+
+export interface VideoLayoutNode extends BaseLayoutNode {
+  type: 'VIDEO';
+  url?: string;
+  base64?: string;
+  width?: number;
+  height?: number;
+  scaleMode?: 'FILL' | 'FIT' | 'CROP';
+  cornerRadius?: number | [number, number, number, number];
+  opacity?: number;
+  x?: number;
+  y?: number;
+}
+
+export type LayoutNode =
+  | FrameLayoutNode
+  | TextLayoutNode
+  | ShapeLayoutNode
+  | ImageLayoutNode
+  | SvgLayoutNode
+  | VideoLayoutNode;
 
 export interface RenderLayoutPayload {
   root: LayoutNode;
@@ -145,6 +199,9 @@ export interface UpdateNodePayload {
   visible?: boolean;
   x?: number;
   y?: number;
+  imageUrl?: string;
+  imageBase64?: string;
+  imageScaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE';
 }
 
 export interface AppendChildrenPayload {
@@ -159,6 +216,31 @@ export interface ReplaceChildrenPayload {
 
 export interface DeleteNodesPayload {
   ids: string[];
+}
+
+export interface DuplicateNodePayload {
+  nodeId: string;
+  name?: string;
+  x?: number;
+  y?: number;
+  insertAfter?: boolean;
+}
+
+export interface InsertMediaPayload {
+  mediaType: 'IMAGE' | 'SVG' | 'VIDEO' | 'GIF';
+  source?: string; // URL (http/https), local file path, raw SVG, or base64
+  base64?: string; // Prepared base64 string
+  svgString?: string; // Prepared raw SVG string
+  name?: string;
+  width?: number;
+  height?: number;
+  x?: number;
+  y?: number;
+  scaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE';
+  targetParentId?: string;
+  targetNodeId?: string; // If set, updates/replaces the fill of this existing node
+  cornerRadius?: number | [number, number, number, number];
+  selectAfterCreate?: boolean;
 }
 
 // ==========================================
@@ -219,25 +301,58 @@ export interface DocumentInfoResult {
 }
 
 // ==========================================
-// Visual Capture Types
+// Visual Capture & Document Export Types
 // ==========================================
 
 export interface CaptureScreenshotPayload {
   nodeId?: string; // If omitted, captures current selection or entire active frame
-  format?: 'PNG' | 'SVG';
+  format?: 'PNG' | 'SVG' | 'PDF' | 'JPG';
   scale?: number; // default 2
+  savePath?: string; // Optional local file path to save directly to disk
 }
 
 export interface CaptureScreenshotResult {
   nodeId: string;
   nodeName: string;
-  format: 'PNG' | 'SVG';
+  format: 'PNG' | 'SVG' | 'PDF' | 'JPG';
   scale: number;
   mimeType: string;
   base64: string;
   dataUrl: string;
   width: number;
   height: number;
+  filePath?: string;
+}
+
+export interface ExportNodesPayload {
+  nodeId?: string; // Single target node ID
+  nodeIds?: string[]; // Multiple target node IDs for batch export
+  exportAllFrames?: boolean; // Export all top-level frames on active page (e.g. all slides in a deck)
+  format?: 'PDF' | 'PNG' | 'JPG' | 'SVG'; // Default 'PDF'
+  scale?: number; // 1, 2, 3, 4 (default 2 for raster, 1 for PDF/SVG)
+  savePath?: string; // Optional local path for single export
+  outputDir?: string; // Optional directory to save batch exported frames
+}
+
+export interface ExportedItem {
+  nodeId: string;
+  nodeName: string;
+  format: 'PDF' | 'PNG' | 'JPG' | 'SVG';
+  mimeType: string;
+  byteLength: number;
+  base64?: string;
+  dataUrl?: string;
+  filePath?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface ExportNodesResult {
+  totalCount: number;
+  format: 'PDF' | 'PNG' | 'JPG' | 'SVG';
+  items: ExportedItem[];
+  outputDir?: string;
+  summary: string;
 }
 
 // ==========================================

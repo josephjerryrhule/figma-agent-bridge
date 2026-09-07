@@ -6,8 +6,8 @@
 import { BridgeRequest, BridgeResponse } from './types';
 import { getSelection, inspectNode, findNodes, getDocumentInfo, serializeNode } from './engine/inspector';
 import { renderLayout } from './engine/parser';
-import { updateNode, appendChildren, replaceChildren, deleteNodes } from './engine/mutator';
-import { captureScreenshot } from './engine/export';
+import { updateNode, appendChildren, replaceChildren, deleteNodes, duplicateNode, insertMedia } from './engine/mutator';
+import { captureScreenshot, exportNodes } from './engine/export';
 
 // Show compact sidebar UI
 figma.showUI(__html__, {
@@ -29,6 +29,8 @@ figma.ui.onmessage = async (msg: BridgeRequest) => {
   const startTime = Date.now();
   const response: BridgeResponse = {
     id: msg.id,
+    command: msg.command,
+    agent: msg.agent,
     success: true
   };
 
@@ -107,6 +109,25 @@ figma.ui.onmessage = async (msg: BridgeRequest) => {
           sessionTouchedNodeIds.delete(id);
         }
         response.data = result;
+        break;
+      }
+
+      case 'DUPLICATE_NODE': {
+        const result = await duplicateNode(msg.payload);
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'INSERT_MEDIA': {
+        const result = await insertMedia(msg.payload);
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'EXPORT_NODES': {
+        response.data = await exportNodes(msg.payload || {});
         break;
       }
 

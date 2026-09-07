@@ -6,16 +6,19 @@
   <title>Agent Canvas Bridge</title>
   <style>
     :root {
-      --bg: #1e1e1e;
-      --surface: #252526;
-      --surface-border: #333333;
-      --text: #ffffff;
-      --text-muted: #999999;
-      --accent: #0d99ff;
+      --bg: #0d0d0e;
+      --surface: #141416;
+      --surface-hover: #1c1c1f;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-subtle: rgba(255, 255, 255, 0.04);
+      --text: #f4f4f5;
+      --text-muted: #71717a;
+      --text-dim: #52525b;
+      --accent: #ffffff;
       --success: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --danger: #f43f5e;
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
     }
 
     * {
@@ -27,8 +30,8 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: var(--font);
-      font-size: 12px;
+      font-family: var(--font-sans);
+      font-size: 11px;
       line-height: 1.4;
       padding: 12px;
       display: flex;
@@ -36,250 +39,365 @@
       height: 100vh;
       overflow: hidden;
       user-select: none;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .header {
+    /* Top Bar */
+    .top-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--surface-border);
-      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
     }
 
-    .title-group {
+    .brand {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
     }
 
-    .logo {
-      width: 20px;
-      height: 20px;
-      border-radius: 4px;
-      background: linear-gradient(135deg, #0d99ff, #9747ff);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
+    .brand-mark {
+      width: 14px;
+      height: 14px;
+      border: 1.5px solid #ffffff;
+      border-radius: 3px;
+      position: relative;
+    }
+
+    .brand-mark::after {
+      content: '';
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: #ffffff;
+      border-radius: 1px;
+      top: 3.5px;
+      left: 3.5px;
+    }
+
+    .brand-title {
       font-size: 11px;
-    }
-
-    .title {
       font-weight: 600;
-      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #ffffff;
     }
 
-    .badge {
+    .status-pill {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 3px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 500;
-      background: var(--surface);
-      border: 1px solid var(--surface-border);
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.02em;
     }
 
     .status-dot {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
-      background: var(--danger);
-      box-shadow: 0 0 6px var(--danger);
-      transition: background 0.3s, box-shadow 0.3s;
+      background: var(--text-dim);
+      transition: all 0.25s ease;
     }
 
     .status-dot.connected {
       background: var(--success);
-      box-shadow: 0 0 8px var(--success);
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
     }
 
-    .card {
+    /* Agent Monitor Panel */
+    .agent-panel {
       background: var(--surface);
-      border: 1px solid var(--surface-border);
+      border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
-
-    .info-row {
+      padding: 8px 10px;
+      margin-bottom: 8px;
       display: flex;
-      justify-content: space-between;
-      color: var(--text-muted);
-      margin-bottom: 4px;
+      flex-direction: column;
+      gap: 7px;
     }
 
-    .info-row:last-child {
-      margin-bottom: 0;
-    }
-
-    .info-value {
-      color: var(--text);
-      font-family: monospace;
-    }
-
-    .agents-list {
+    .agent-tabs {
       display: flex;
-      gap: 6px;
-      margin-top: 6px;
-      flex-wrap: wrap;
+      gap: 4px;
     }
 
-    .agent-tag {
-      background: #2d2d30;
-      border: 1px solid #3c3c3c;
-      padding: 2px 6px;
+    .agent-tab {
+      flex: 1;
+      padding: 4px 6px;
+      background: transparent;
+      border: 1px solid var(--border-subtle);
       border-radius: 4px;
-      font-size: 10px;
-      color: #cccccc;
-    }
-
-    .section-title {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
+      transition: all 0.2s;
     }
 
-    .logs-container {
+    .agent-tab .name {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-dim);
+      letter-spacing: 0.02em;
+    }
+
+    .agent-tab .count {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-dim);
+    }
+
+    .agent-tab.active {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .agent-tab.active .name {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .agent-tab.active .count {
+      color: var(--text-muted);
+    }
+
+    .agent-status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--text-muted);
+      padding-top: 4px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .active-agent-desc {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 250px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .active-agent-desc strong {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .state-indicator {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .state-indicator.live {
+      color: var(--success);
+    }
+
+    /* Activity Feed */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      padding: 0 2px;
+    }
+
+    .activity-stream {
       flex: 1;
       overflow-y: auto;
-      background: #181818;
-      border: 1px solid var(--surface-border);
-      border-radius: 6px;
-      padding: 8px;
-      font-family: monospace;
-      font-size: 11px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .log-item {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      padding: 4px 6px;
-      background: #202022;
-      border-left: 3px solid var(--accent);
-      border-radius: 3px;
-    }
-
-    .log-item.error {
-      border-left-color: var(--danger);
-    }
-
-    .log-header {
-      display: flex;
-      justify-content: space-between;
-      font-size: 10px;
-      color: var(--text-muted);
-    }
-
-    .log-cmd {
-      font-weight: 600;
-      color: #e0e0e0;
-    }
-
-    .log-detail {
-      color: #aaaaaa;
-      word-break: break-all;
-    }
-
-    .actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    button {
-      flex: 1;
-      padding: 7px 10px;
-      border-radius: 6px;
-      border: 1px solid var(--surface-border);
       background: var(--surface);
-      color: var(--text);
-      font-size: 11px;
-      font-weight: 500;
-      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      transition: background 0.2s, border-color 0.2s;
-    }
-
-    button:hover {
-      background: #333336;
-      border-color: #444;
-    }
-
-    button.primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #ffffff;
-    }
-
-    button.primary:hover {
-      background: #0b80d6;
+      flex-direction: column;
+      gap: 4px;
     }
 
     .empty-state {
       margin: auto;
       text-align: center;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .log-row {
+      padding: 5px 7px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid transparent;
+      transition: background 0.15s, border-color 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .log-row:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--border-subtle);
+    }
+
+    .log-row.error {
+      border-left: 2px solid var(--danger);
+    }
+
+    .log-row-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+    }
+
+    .log-row-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .agent-tag {
+      color: #ffffff;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+
+    .cmd-name {
       color: var(--text-muted);
-      font-style: italic;
+    }
+
+    .time-stamp {
+      color: var(--text-dim);
+    }
+
+    .log-row-content {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .log-row-content.success {
+      color: #d4d4d8;
+    }
+
+    .log-row-content.error {
+      color: var(--danger);
+    }
+
+    /* Actions Bottom Toolbar */
+    .toolbar {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: var(--surface-hover);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .btn.primary {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+      font-weight: 600;
+    }
+
+    .btn.primary:hover {
+      background: #e4e4e7;
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="title-group">
-      <div class="logo">⚡</div>
-      <div class="title">Agent Canvas</div>
+  <div class="top-bar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-title">Agent Bridge</div>
     </div>
-    <div class="badge" id="statusBadge">
+    <div class="status-pill" id="statusBadge">
       <span class="status-dot" id="statusDot"></span>
-      <span id="statusText">Connecting...</span>
+      <span id="statusText">3055 · Disconnected</span>
     </div>
   </div>
 
-  <div class="card">
-    <div class="info-row">
-      <span>Relay Target:</span>
-      <span class="info-value" id="serverUrl">ws://localhost:3055</span>
-    </div>
-    <div class="info-row">
-      <span>Connected Agents:</span>
-      <div class="agents-list">
-        <span class="agent-tag">AGY</span>
-        <span class="agent-tag">Claude</span>
-        <span class="agent-tag">Codex</span>
-        <span class="agent-tag">ChatGPT</span>
+  <!-- Agent Monitor Strip -->
+  <div class="agent-panel">
+    <div class="agent-tabs">
+      <div class="agent-tab" id="tab-AGY">
+        <span class="name">AGY</span>
+        <span class="count" id="count-AGY">0</span>
+      </div>
+      <div class="agent-tab" id="tab-Claude">
+        <span class="name">Claude</span>
+        <span class="count" id="count-Claude">0</span>
+      </div>
+      <div class="agent-tab" id="tab-Codex">
+        <span class="name">Codex</span>
+        <span class="count" id="count-Codex">0</span>
+      </div>
+      <div class="agent-tab" id="tab-ChatGPT">
+        <span class="name">ChatGPT</span>
+        <span class="count" id="count-ChatGPT">0</span>
       </div>
     </div>
+    <div class="agent-status-line">
+      <span class="active-agent-desc" id="statusDesc">Standby · Waiting for agent</span>
+      <span class="state-indicator" id="statePill">IDLE</span>
+    </div>
   </div>
 
-  <div class="section-title">
-    <span>Live Command Stream</span>
-    <span id="logCount" style="font-weight: normal;">0 events</span>
+  <div class="section-header">
+    <span>Activity</span>
+    <span id="logCount">0 events</span>
   </div>
 
-  <div class="logs-container" id="logsContainer">
-    <div class="empty-state" id="emptyLogs">Waiting for agent commands...</div>
+  <div class="activity-stream" id="logsContainer">
+    <div class="empty-state" id="emptyLogs">No recent activity</div>
   </div>
 
-  <div class="actions">
-    <button id="btnPing">⚡ Test Ping</button>
-    <button id="btnClear">Clear Logs</button>
-    <button class="primary" id="btnReconnect">Reconnect</button>
+  <div class="toolbar">
+    <button class="btn" id="btnPing">Ping</button>
+    <button class="btn" id="btnClear">Clear</button>
+    <button class="btn primary" id="btnReconnect">Reconnect</button>
   </div>
 
   <script>
@@ -287,6 +405,16 @@
     let socket = null;
     let reconnectTimeout = null;
     let commandCount = 0;
+    let idleTimer = null;
+
+    const agentCounters = {
+      'AGY': 0,
+      'Claude': 0,
+      'Codex': 0,
+      'ChatGPT': 0
+    };
+
+    let activeAgentCategory = null;
 
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
@@ -294,37 +422,106 @@
     const emptyLogs = document.getElementById('emptyLogs');
     const logCount = document.getElementById('logCount');
 
+    const statusDesc = document.getElementById('statusDesc');
+    const statePill = document.getElementById('statePill');
+
+    function classifyAgent(name) {
+      if (!name) return { category: 'Codex', label: 'Codex' };
+      const lower = name.toLowerCase();
+      if (lower.includes('agy') || lower.includes('antigravity')) {
+        return { category: 'AGY', label: 'AGY' };
+      }
+      if (lower.includes('claude')) {
+        return { category: 'Claude', label: 'Claude' };
+      }
+      if (lower.includes('codex') || lower.includes('cursor')) {
+        return { category: 'Codex', label: 'Codex' };
+      }
+      if (lower.includes('chatgpt') || lower.includes('gpt') || lower.includes('openai')) {
+        return { category: 'ChatGPT', label: 'ChatGPT' };
+      }
+      return { category: 'Codex', label: name };
+    }
+
+    function setActiveAgent(agentName, command, isExecuting) {
+      const { category, label } = classifyAgent(agentName);
+      activeAgentCategory = category;
+
+      if (isExecuting && agentCounters[category] !== undefined) {
+        agentCounters[category]++;
+        const countEl = document.getElementById(`count-${category}`);
+        if (countEl) countEl.textContent = String(agentCounters[category]);
+      }
+
+      ['AGY', 'Claude', 'Codex', 'ChatGPT'].forEach(cat => {
+        const tab = document.getElementById(`tab-${cat}`);
+        if (tab) {
+          if (cat === category) {
+            tab.classList.add('active');
+          } else {
+            tab.classList.remove('active');
+          }
+        }
+      });
+
+      if (isExecuting) {
+        statusDesc.innerHTML = `<strong>${label}</strong> · ${command || 'executing'}`;
+        statePill.className = 'state-indicator live';
+        statePill.textContent = 'ACTIVE';
+      } else {
+        statusDesc.innerHTML = `<strong>${label}</strong> · completed`;
+        statePill.className = 'state-indicator live';
+        statePill.textContent = 'ACTIVE';
+      }
+
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        statePill.className = 'state-indicator';
+        statePill.textContent = 'IDLE';
+        statusDesc.innerHTML = `Standby · Last active: ${label}`;
+        
+        ['AGY', 'Claude', 'Codex', 'ChatGPT'].forEach(cat => {
+          const tab = document.getElementById(`tab-${cat}`);
+          if (tab) tab.classList.remove('active');
+        });
+      }, 10000);
+    }
+
     function updateStatus(connected, text) {
       if (connected) {
         statusDot.className = 'status-dot connected';
-        statusText.textContent = text || 'Connected';
+        statusText.textContent = text || '3055 · Live';
       } else {
         statusDot.className = 'status-dot';
-        statusText.textContent = text || 'Disconnected';
+        statusText.textContent = text || '3055 · Offline';
       }
     }
 
-    function addLog(command, detail, isError = false, timeMs = null) {
+    function addLog(agentName, command, detail, isError = false, timeMs = null) {
       if (emptyLogs) emptyLogs.style.display = 'none';
 
       commandCount++;
       logCount.textContent = `${commandCount} events`;
 
-      const item = document.createElement('div');
-      item.className = 'log-item' + (isError ? ' error' : '');
+      const { label } = classifyAgent(agentName);
+      const row = document.createElement('div');
+      row.className = 'log-row' + (isError ? ' error' : '');
 
-      const now = new Date().toLocaleTimeString();
-      const timeTag = timeMs ? ` (${timeMs}ms)` : '';
+      const now = new Date().toTimeString().split(' ')[0];
+      const timeTag = timeMs !== null && timeMs !== undefined ? ` · ${timeMs}ms` : '';
 
-      item.innerHTML = `
-        <div class="log-header">
-          <span class="log-cmd">${command}</span>
-          <span>${now}${timeTag}</span>
+      row.innerHTML = `
+        <div class="log-row-meta">
+          <div class="log-row-left">
+            <span class="agent-tag">${label}</span>
+            <span class="cmd-name">${command}</span>
+          </div>
+          <span class="time-stamp">${now}${timeTag}</span>
         </div>
-        <div class="log-detail">${detail}</div>
+        <div class="log-row-content ${isError ? 'error' : 'success'}">${detail}</div>
       `;
 
-      logsContainer.appendChild(item);
+      logsContainer.appendChild(row);
       logsContainer.scrollTop = logsContainer.scrollHeight;
     }
 
@@ -339,10 +536,9 @@
         socket = new WebSocket(WS_URL);
 
         socket.onopen = () => {
-          updateStatus(true, 'Live (Port 3055)');
-          addLog('BRIDGE', 'Connected to local Agent Bridge server');
+          updateStatus(true, '3055 · Live');
+          addLog('System', 'BRIDGE', 'Connected to local relay');
           
-          // Send handshake
           socket.send(JSON.stringify({
             type: 'PLUGIN_CONNECTED',
             timestamp: Date.now()
@@ -352,25 +548,36 @@
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            addLog(data.command || 'COMMAND', `Agent dispatched: ${JSON.stringify(data.payload || {}).slice(0, 80)}`);
+            const agent = data.agent || 'AI Agent';
+            const cmd = data.command || 'COMMAND';
 
-            // Forward to Figma Sandbox code.ts
+            setActiveAgent(agent, cmd, true);
+
+            let preview = '';
+            if (data.payload && typeof data.payload === 'object') {
+              const keys = Object.keys(data.payload);
+              if (keys.length > 0) {
+                preview = JSON.stringify(data.payload).slice(0, 80);
+              }
+            }
+            addLog(agent, cmd, preview || 'Dispatched command');
+
             parent.postMessage({ pluginMessage: data }, '*');
           } catch (e) {
-            addLog('PARSE_ERROR', e.message, true);
+            addLog('System', 'ERROR', e.message, true);
           }
         };
 
         socket.onclose = () => {
-          updateStatus(false, 'Disconnected');
+          updateStatus(false, '3055 · Offline');
           scheduleReconnect();
         };
 
         socket.onerror = () => {
-          updateStatus(false, 'Connection Error');
+          updateStatus(false, '3055 · Error');
         };
       } catch (err) {
-        updateStatus(false, 'Offline');
+        updateStatus(false, '3055 · Offline');
         scheduleReconnect();
       }
     }
@@ -382,41 +589,41 @@
       }, 3000);
     }
 
-    // Listen for responses back from Figma Sandbox (code.ts)
     window.onmessage = (event) => {
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
+      const agent = msg.agent || activeAgentCategory || 'Agent';
+      const cmd = msg.command || 'DONE';
+
+      setActiveAgent(agent, cmd, false);
+
       if (msg.success) {
-        addLog(
-          'SUCCESS',
-          msg.data?.name || msg.data?.id || (typeof msg.data === 'object' ? 'Completed' : String(msg.data)),
-          false,
-          msg.executionTimeMs
-        );
+        const detail = msg.data?.name || msg.data?.id || (typeof msg.data === 'object' ? 'Completed' : String(msg.data));
+        addLog(agent, `${cmd} ✓`, detail, false, msg.executionTimeMs);
       } else {
-        addLog('ERROR', msg.error || 'Execution failed', true, msg.executionTimeMs);
+        addLog(agent, `${cmd} ✕`, msg.error || 'Execution failed', true, msg.executionTimeMs);
       }
 
-      // Forward response back over WebSocket to the AI agent
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(msg));
       }
     };
 
-    // UI Buttons
     document.getElementById('btnPing').onclick = () => {
+      setActiveAgent('Local', 'GET_STATUS', true);
       parent.postMessage({
         pluginMessage: {
           id: 'ping-' + Date.now(),
           command: 'GET_STATUS',
+          agent: 'Local',
           payload: {}
         }
       }, '*');
     };
 
     document.getElementById('btnClear').onclick = () => {
-      logsContainer.innerHTML = '<div class="empty-state" id="emptyLogs">Waiting for agent commands...</div>';
+      logsContainer.innerHTML = '<div class="empty-state" id="emptyLogs">No recent activity</div>';
       commandCount = 0;
       logCount.textContent = '0 events';
     };
@@ -425,7 +632,6 @@
       connectWebSocket();
     };
 
-    // Auto connect on startup
     connectWebSocket();
   </script>
 </body>

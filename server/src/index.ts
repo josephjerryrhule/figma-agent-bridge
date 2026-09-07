@@ -18,13 +18,18 @@ program
   .description('Universal AI design bridge for Figma (AGY, Claude, Codex, ChatGPT)')
   .version('1.0.0')
   .option('-p, --port <number>', 'Port for WebSocket and HTTP bridge', '3055')
+  .option('--agent <name>', 'Name of agent using this bridge instance (e.g. "Claude Code", "AGY", "Codex")')
   .option('--bridge-only', 'Run WebSocket and REST API only without MCP stdio server', false)
   .action(async (options) => {
     const port = parseInt(options.port, 10) || 3055;
     const bridgeOnly = !!options.bridgeOnly;
+    const agent = options.agent || process.env.FIGMA_AGENT_NAME;
 
     // Create Bridge
     const wsBridge = new WebSocketBridge(undefined, port);
+    if (agent) {
+      wsBridge.defaultAgent = agent;
+    }
 
     // Create combined HTTP & WebSocket server
     const server = http.createServer(createHttpHandler(wsBridge, port));
@@ -52,7 +57,7 @@ program
     // Start MCP Stdio Server if not in bridge-only mode
     if (!bridgeOnly) {
       try {
-        await startMcpStdio(wsBridge);
+        await startMcpStdio(wsBridge, agent);
       } catch (err: any) {
         console.error('[mcp]: Failed to start MCP stdio server:', err.message);
         process.exit(1);

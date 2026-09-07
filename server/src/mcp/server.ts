@@ -13,9 +13,11 @@ import {
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { WebSocketBridge } from '../ws-bridge.js';
 import { toolsDefinitions } from './tools.js';
-import { BridgeCommandType, CaptureScreenshotResult } from '../shared/protocol.js';
+import { BridgeCommandType, CaptureScreenshotResult, ExportNodesResult } from '../shared/protocol.js';
+import { resolveMediaPayload, resolveLayoutTreeMedia, resolveUpdateNodeMedia } from '../shared/media-resolver.js';
+import { processExportResult, processScreenshotResult } from '../shared/export-saver.js';
 
-export function createMcpServer(wsBridge: WebSocketBridge): Server {
+export function createMcpServer(wsBridge: WebSocketBridge, configuredAgent?: string): Server {
   const server = new Server(
     {
       name: 'figma-agent-bridge',
@@ -81,6 +83,15 @@ export function createMcpServer(wsBridge: WebSocketBridge): Server {
         case 'figma_delete_nodes':
           command = 'DELETE_NODES';
           break;
+        case 'figma_duplicate_node':
+          command = 'DUPLICATE_NODE';
+          break;
+        case 'figma_insert_media':
+          command = 'INSERT_MEDIA';
+          break;
+        case 'figma_export':
+          command = 'EXPORT_NODES';
+          break;
         case 'figma_capture_screenshot':
           command = 'CAPTURE_SCREENSHOT';
           break;
@@ -103,47 +114,88 @@ export function createMcpServer(wsBridge: WebSocketBridge): Server {
           };
       }
 
-      // Check status shortcut if bridge not connected
-      if (name === 'figma_get_status') {
-        const isLive = wsBridge.isConnected();
-        if (!isLive) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(
-                  {
-                    online: false,
-                    message:
-                      'Figma plugin is not connected. Open your Figma document and launch "Agent Canvas Bridge" plugin to connect.'
-                  },
-                  null,
-                  2
-                )
-              }
-            ]
-          };
+      // Pre-process and resolve media assets (URLs, local files, SVGs)
+      if (command === 'INSERT_MEDIA') {
+        payload = await resolveMediaPayload(payload);
+      } else if (command === 'RENDER_LAYOUT') {
+        if (payload?.root) {
+          payload.root = await resolveLayoutTreeMedia(payload.root);
+        }
+      } else if (command === 'APPEND_CHILDREN' || command === 'REPLACE_CHILDREN') {
+        if (Array.isArray(payload?.children)) {
+          for (let i = 0; i < payload.children.length; i++) {
+            payload.children[i] = await resolveLayoutTreeMedia(payload.children[i]);
+          }
+        }
+      } else if (command === 'UPDATE_NODE') {
+        payload = await resolveUpdateNodeMedia(payload);
+      }
+
+      // Determine active agent
+      let activeAgent = configuredAgent || process.env.FIGMA_AGENT_NAME;
+      if (!activeAgent) {
+        const clientVer = (server as any).getClientVersion?.();
+        const clientName = clientVer?.name?.toLowerCase() || '';
+        if (clientName.includes('claude-code')) {
+          activeAgent = 'Claude Code';
+        } else if (clientName.includes('claude') || clientName.includes('desktop')) {
+          activeAgent = 'Claude Desktop';
+        } else if (clientName.includes('antigravity') || clientName.includes('agy')) {
+          activeAgent = 'AGY';
+        } else if (process.env.CLAUDE_CODE || process.env.CLAUDE_VERSION) {
+          activeAgent = 'Claude Code';
+        } else if (process.env.ANTIGRAVITY_CLI || process.env.ANTIGRAVITY || process.env.USER_REQUEST) {
+          activeAgent = 'AGY';
+        } else {
+          activeAgent = 'Claude';
         }
       }
 
-      const result = await wsBridge.sendCommand(command, payload);
+      const timeoutMs = command === 'EXPORT_NODES' || command === 'EXECUTE_CODE' ? 60000 : 25000;
+      const result = await wsBridge.sendCommand(command, payload, timeoutMs, activeAgent);
 
-      // Special handling for screenshot: return both text description and base64 image block for vision models!
-      if (name === 'figma_capture_screenshot' && result?.base64) {
-        const shot = result as CaptureScreenshotResult;
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `✅ Captured screenshot of node "${shot.nodeName}" (ID: ${shot.nodeId}) [${shot.width}x${shot.height}px, ${shot.format}]`
-            },
-            {
+      // Special handling for export: save to disk if requested and return detailed summary
+      if (name === 'figma_export') {
+        const processed = await processExportResult(result as ExportNodesResult, payload);
+        const content: any[] = [];
+        let summaryText = `✅ ${processed.summary}\nFormat: ${processed.format}\nExported (${processed.totalCount} item${processed.totalCount === 1 ? '' : 's'}):`;
+        for (const item of processed.items) {
+          summaryText += `\n- "${item.nodeName}" (ID: ${item.nodeId}) [${Math.round(item.byteLength / 1024)} KB]`;
+          if (item.filePath) summaryText += ` -> ${item.filePath}`;
+        }
+        content.push({ type: 'text', text: summaryText });
+
+        // If single image without savePath, include image block for vision models
+        if (!payload.savePath && !payload.outputDir && processed.items.length === 1) {
+          const item = processed.items[0];
+          if (item.base64 && (item.format === 'PNG' || item.format === 'JPG')) {
+            content.push({
               type: 'image',
-              data: shot.base64,
-              mimeType: shot.mimeType
-            }
-          ]
-        };
+              data: item.base64,
+              mimeType: item.mimeType
+            });
+          }
+        }
+        return { content };
+      }
+
+      // Special handling for screenshot: save to disk if requested & return base64 image block
+      if (name === 'figma_capture_screenshot' && result?.base64) {
+        const shot = await processScreenshotResult(result as CaptureScreenshotResult, payload);
+        const content: any[] = [
+          {
+            type: 'text',
+            text: `✅ Captured screenshot of node "${shot.nodeName}" (ID: ${shot.nodeId}) [${shot.width}x${shot.height}px, ${shot.format}]${shot.filePath ? ` -> Saved to ${shot.filePath}` : ''}`
+          }
+        ];
+        if (shot.base64 && (shot.format === 'PNG' || shot.format === 'JPG')) {
+          content.push({
+            type: 'image',
+            data: shot.base64,
+            mimeType: shot.mimeType
+          });
+        }
+        return { content };
       }
 
       return {
@@ -170,9 +222,9 @@ export function createMcpServer(wsBridge: WebSocketBridge): Server {
   return server;
 }
 
-export async function startMcpStdio(wsBridge: WebSocketBridge): Promise<void> {
-  const server = createMcpServer(wsBridge);
+export async function startMcpStdio(wsBridge: WebSocketBridge, agentName?: string): Promise<void> {
+  const server = createMcpServer(wsBridge, agentName);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[mcp]: Stdio MCP server initialized and listening for AI agent queries');
+  console.error(`[mcp]: Stdio MCP server initialized for agent "${agentName || 'Auto-Detect'}"`);
 }

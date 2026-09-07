@@ -8,6 +8,8 @@ import {
   AppendChildrenPayload,
   ReplaceChildrenPayload,
   DeleteNodesPayload,
+  DuplicateNodePayload,
+  InsertMediaPayload,
   SerializedNodeInfo
 } from '../types';
 import { createSolidPaint } from './colors';
@@ -69,7 +71,19 @@ export async function updateNode(payload: UpdateNodePayload): Promise<Serialized
   }
 
   // Fills & background updates
-  if (payload.background !== undefined && 'fills' in targetNode) {
+  if (payload.imageBase64 && 'fills' in targetNode) {
+    try {
+      const bytes = figma.base64Decode(payload.imageBase64);
+      const image = figma.createImage(bytes);
+      (targetNode as any).fills = [{
+        type: 'IMAGE',
+        imageHash: image.hash,
+        scaleMode: payload.imageScaleMode || 'FILL'
+      }];
+    } catch (e: any) {
+      console.warn('Failed to update node with image fill:', e);
+    }
+  } else if (payload.background !== undefined && 'fills' in targetNode) {
     (targetNode as any).fills = createSolidPaint(payload.background, payload.opacity);
   } else if (payload.color !== undefined && 'fills' in targetNode && targetNode.type !== 'TEXT') {
     (targetNode as any).fills = createSolidPaint(payload.color, payload.opacity);
@@ -237,4 +251,188 @@ export async function deleteNodes(payload: DeleteNodesPayload): Promise<{ delete
     deletedCount: deletedIds.length,
     deletedIds
   };
+}
+
+/**
+ * Duplicates / clones an existing node.
+ */
+export async function duplicateNode(payload: DuplicateNodePayload): Promise<SerializedNodeInfo> {
+  const node = figma.getNodeById(payload.nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID '${payload.nodeId}'`);
+  }
+
+  if (!('clone' in node)) {
+    throw new Error(`Node '${node.name}' (${node.type}) cannot be cloned.`);
+  }
+
+  const clone = (node as SceneNode).clone();
+
+  if (payload.name) {
+    clone.name = payload.name;
+  }
+  if (payload.x !== undefined) {
+    clone.x = payload.x;
+  }
+  if (payload.y !== undefined) {
+    clone.y = payload.y;
+  }
+
+  if (node.parent && 'children' in node.parent && payload.insertAfter !== false) {
+    const parent = node.parent;
+    const originalIndex = parent.children.indexOf(node as SceneNode);
+    if (originalIndex !== -1 && originalIndex + 1 < parent.children.length) {
+      parent.insertChild(originalIndex + 1, clone);
+    }
+  }
+
+  return serializeNode(clone);
+}
+
+/**
+ * Inserts media (IMAGE, SVG, VIDEO, or GIF) as a new node or replaces fills of an existing node.
+ */
+export async function insertMedia(payload: InsertMediaPayload): Promise<SerializedNodeInfo> {
+  // If targetNodeId is specified, update that existing node's fills directly
+  if (payload.targetNodeId) {
+    const targetNode = figma.getNodeById(payload.targetNodeId);
+    if (!targetNode) {
+      throw new Error(`Target node not found with ID '${payload.targetNodeId}'`);
+    }
+
+    if (payload.mediaType === 'VIDEO') {
+      if (!payload.base64) throw new Error('Video requires base64 data');
+      const bytes = figma.base64Decode(payload.base64);
+      const video = await figma.createVideoAsync(bytes);
+      (targetNode as any).fills = [{
+        type: 'VIDEO',
+        videoHash: video.hash,
+        scaleMode: payload.scaleMode || 'FILL'
+      }];
+    } else {
+      // IMAGE or GIF
+      if (!payload.base64) throw new Error('Image/GIF requires base64 data');
+      const bytes = figma.base64Decode(payload.base64);
+      const image = figma.createImage(bytes);
+      (targetNode as any).fills = [{
+        type: 'IMAGE',
+        imageHash: image.hash,
+        scaleMode: payload.scaleMode || 'FILL'
+      }];
+    }
+    return serializeNode(targetNode as SceneNode);
+  }
+
+  let createdNode: SceneNode;
+
+  if (payload.mediaType === 'SVG') {
+    const svgStr = payload.svgString || '<svg viewBox="0 0 24 24"></svg>';
+    createdNode = figma.createNodeFromSvg(svgStr);
+    if (payload.width && payload.height) {
+      createdNode.resize(payload.width, payload.height);
+    }
+  } else if (payload.mediaType === 'VIDEO') {
+    const rect = figma.createRectangle();
+    const width = payload.width || 400;
+    const height = payload.height || 225;
+    rect.resize(width, height);
+
+    if (payload.base64) {
+      try {
+        const bytes = figma.base64Decode(payload.base64);
+        const video = await figma.createVideoAsync(bytes);
+        rect.fills = [{
+          type: 'VIDEO',
+          videoHash: video.hash,
+          scaleMode: payload.scaleMode || 'FILL'
+        }];
+      } catch (e: any) {
+        console.warn('Figma video creation failed, using placeholder:', e);
+        rect.fills = createSolidPaint('#0F172A');
+      }
+    } else {
+      rect.fills = createSolidPaint('#0F172A');
+    }
+    createdNode = rect;
+  } else {
+    // IMAGE or GIF
+    const rect = figma.createRectangle();
+    const width = payload.width || 300;
+    const height = payload.height || 200;
+    rect.resize(width, height);
+
+    if (payload.base64) {
+      try {
+        const bytes = figma.base64Decode(payload.base64);
+        const image = figma.createImage(bytes);
+        rect.fills = [{
+          type: 'IMAGE',
+          imageHash: image.hash,
+          scaleMode: payload.scaleMode || 'FILL'
+        }];
+      } catch (e: any) {
+        console.warn('Figma image creation failed:', e);
+        rect.fills = createSolidPaint('#CBD5E1');
+      }
+    } else {
+      rect.fills = createSolidPaint('#CBD5E1');
+    }
+    createdNode = rect;
+  }
+
+  if (payload.name) {
+    createdNode.name = payload.name;
+  }
+
+  if (payload.cornerRadius && 'cornerRadius' in createdNode) {
+    if (typeof payload.cornerRadius === 'number') {
+      (createdNode as any).cornerRadius = payload.cornerRadius;
+    } else if (Array.isArray(payload.cornerRadius) && 'topLeftRadius' in createdNode) {
+      const [tl, tr, br, bl] = payload.cornerRadius;
+      const r = createdNode as RectangleNode;
+      r.topLeftRadius = tl;
+      r.topRightRadius = tr;
+      r.bottomRightRadius = br;
+      r.bottomLeftRadius = bl;
+    }
+  }
+
+  // Insert into parent or current selection or page
+  let targetParent: (BaseNode & ChildrenMixin) | null = null;
+  if (payload.targetParentId) {
+    const found = figma.getNodeById(payload.targetParentId);
+    if (found && 'appendChild' in found) {
+      targetParent = found as any;
+    }
+  }
+
+  if (!targetParent && figma.currentPage.selection.length === 1) {
+    const sel = figma.currentPage.selection[0];
+    if ('appendChild' in sel && sel.type === 'FRAME') {
+      targetParent = sel as any;
+    }
+  }
+
+  if (targetParent) {
+    targetParent.appendChild(createdNode);
+  } else {
+    figma.currentPage.appendChild(createdNode);
+  }
+
+  // Position
+  if (payload.x !== undefined && payload.y !== undefined) {
+    createdNode.x = payload.x;
+    createdNode.y = payload.y;
+  } else if (!targetParent || targetParent.type !== 'FRAME' || (targetParent as FrameNode).layoutMode === 'NONE') {
+    // Center in current viewport
+    const center = figma.viewport.center;
+    createdNode.x = Math.round(center.x - createdNode.width / 2);
+    createdNode.y = Math.round(center.y - createdNode.height / 2);
+  }
+
+  if (payload.selectAfterCreate !== false) {
+    figma.currentPage.selection = [createdNode];
+  }
+
+  return serializeNode(createdNode);
 }

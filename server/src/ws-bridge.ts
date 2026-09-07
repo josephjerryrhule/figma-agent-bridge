@@ -88,31 +88,37 @@ export class WebSocketBridge {
     return this.activeClient !== null && this.activeClient.readyState === WebSocket.OPEN;
   }
 
+  public defaultAgent?: string;
+
   public async sendCommand<TResponse = any, TPayload = any>(
     command: BridgeCommandType,
     payload: TPayload,
-    timeoutMs = 20000
+    timeoutMs = 20000,
+    agent?: string
   ): Promise<TResponse> {
+    const effectiveAgent = agent || this.defaultAgent || 'AI Agent';
     // 1. Direct WebSocket communication if plugin is connected directly to this process
     if (this.isConnected()) {
-      return this.sendViaDirectWebSocket(command, payload, timeoutMs);
+      return this.sendViaDirectWebSocket(command, payload, timeoutMs, effectiveAgent);
     }
 
     // 2. Fallback: Query local bridge daemon over HTTP (in case another process owns port 3055)
-    return this.sendViaLocalHttp(command, payload, timeoutMs);
+    return this.sendViaLocalHttp(command, payload, timeoutMs, effectiveAgent);
   }
 
   private sendViaDirectWebSocket<TResponse, TPayload>(
     command: BridgeCommandType,
     payload: TPayload,
-    timeoutMs: number
+    timeoutMs: number,
+    agent?: string
   ): Promise<TResponse> {
     const id = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const request: BridgeRequest<TPayload> = {
       id,
       command,
       payload,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      agent: agent || 'AI Agent'
     };
 
     return new Promise<TResponse>((resolve, reject) => {
@@ -136,7 +142,8 @@ export class WebSocketBridge {
   private async sendViaLocalHttp<TResponse, TPayload>(
     command: BridgeCommandType,
     payload: TPayload,
-    timeoutMs: number
+    timeoutMs: number,
+    agent?: string
   ): Promise<TResponse> {
     const endpoint = this.getEndpointForCommand(command);
     const url = `http://127.0.0.1:${this.port}${endpoint.path}`;
@@ -147,7 +154,10 @@ export class WebSocketBridge {
 
       const res = await fetch(url, {
         method: endpoint.method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Agent-Name': agent || 'AI Agent'
+        },
         body: endpoint.method === 'POST' ? JSON.stringify(payload) : undefined,
         signal: controller.signal
       });
@@ -199,6 +209,8 @@ export class WebSocketBridge {
         return { path: '/v1/replace', method: 'POST' };
       case 'DELETE_NODES':
         return { path: '/v1/delete', method: 'POST' };
+      case 'DUPLICATE_NODE':
+        return { path: '/v1/duplicate', method: 'POST' };
       case 'CAPTURE_SCREENSHOT':
         return { path: '/v1/screenshot', method: 'POST' };
       case 'EXECUTE_CODE':
