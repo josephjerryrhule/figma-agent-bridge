@@ -1,0 +1,53 @@
+{
+  "name": "figma-agent-bridge",
+  "version": "1.0.0",
+  "description": "Universal AI design bridge connecting Antigravity (AGY), Claude, Codex, and ChatGPT directly to Figma with full CRUD, visual feedback, and declarative layout tools.",
+  "main": "server/dist/index.js",
+  "bin": {
+    "figma-agent-bridge": "./server/dist/index.js",
+    "figma-bridge": "./server/dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:plugin && npm run build:server",
+    "build:plugin": "node plugin/esbuild.config.mjs",
+    "build:server": "esbuild server/src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=server/dist/index.js --external:ws --external:@modelcontextprotocol/sdk --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "start": "node server/dist/index.js",
+    "start:bridge": "node server/dist/index.js --bridge-only",
+    "dev:server": "tsx server/src/index.ts",
+    "dev:plugin": "node plugin/esbuild.config.mjs --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p plugin/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "figma",
+    "figma-plugin",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "claude",
+    "antigravity",
+    "agy",
+    "codex",
+    "chatgpt",
+    "design"
+  ],
+  "author": "Joseph Jerry Rhule",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "commander": "^13.1.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.109.0",
+    "@types/node": "^22.13.0",
+    "@types/ws": "^8.5.14",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  }
+}

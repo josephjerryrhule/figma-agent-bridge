@@ -1,0 +1,137 @@
+{
+  "root": {
+    "type": "FRAME",
+    "name": "Pricing Card - Pro",
+    "layout": "VERTICAL",
+    "width": 360,
+    "height": "HUG",
+    "gap": 24,
+    "padding": { "top": 32, "right": 32, "bottom": 32, "left": 32 },
+    "background": "#FFFFFF",
+    "cornerRadius": 16,
+    "stroke": { "color": "#0D99FF", "weight": 2 },
+    "children": [
+      {
+        "type": "FRAME",
+        "name": "Header Row",
+        "layout": "HORIZONTAL",
+        "alignItems": "SPACE_BETWEEN",
+        "width": "FILL",
+        "children": [
+          {
+            "type": "TEXT",
+            "name": "Plan Name",
+            "text": "Pro Plan",
+            "fontWeight": "Bold",
+            "fontSize": 20,
+            "color": "#0F172A"
+          },
+          {
+            "type": "FRAME",
+            "name": "Badge",
+            "layout": "HORIZONTAL",
+            "padding": { "top": 4, "right": 10, "bottom": 4, "left": 10 },
+            "background": "#EFF6FF",
+            "cornerRadius": 12,
+            "children": [
+              {
+                "type": "TEXT",
+                "text": "MOST POPULAR",
+                "fontWeight": "Bold",
+                "fontSize": 10,
+                "color": "#0D99FF"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "FRAME",
+        "name": "Price Block",
+        "layout": "HORIZONTAL",
+        "gap": 4,
+        "counterAlignItems": "BASELINE",
+        "children": [
+          {
+            "type": "TEXT",
+            "name": "Price",
+            "text": "$49",
+            "fontWeight": "Bold",
+            "fontSize": 44,
+            "color": "#0F172A"
+          },
+          {
+            "type": "TEXT",
+            "name": "Period",
+            "text": "/ month",
+            "fontSize": 14,
+            "color": "#64748B"
+          }
+        ]
+      },
+      {
+        "type": "TEXT",
+        "name": "Description",
+        "text": "Designed for fast-moving engineering and product teams utilizing autonomous AI agents.",
+        "fontSize": 14,
+        "color": "#475569",
+        "lineHeight": 20,
+        "width": "FILL"
+      },
+      {
+        "type": "FRAME",
+        "name": "Features List",
+        "layout": "VERTICAL",
+        "gap": 12,
+        "width": "FILL",
+        "children": [
+          {
+            "type": "TEXT",
+            "text": "✓ Unlimited AI agent canvas edits",
+            "fontSize": 13,
+            "color": "#334155"
+          },
+          {
+            "type": "TEXT",
+            "text": "✓ Direct MCP support (AGY & Claude)",
+            "fontSize": 13,
+            "color": "#334155"
+          },
+          {
+            "type": "TEXT",
+            "text": "✓ Full visual feedback & screenshot loops",
+            "fontSize": 13,
+            "color": "#334155"
+          },
+          {
+            "type": "TEXT",
+            "text": "✓ Auto Layout & design token extraction",
+            "fontSize": 13,
+            "color": "#334155"
+          }
+        ]
+      },
+      {
+        "type": "FRAME",
+        "name": "CTA Button",
+        "layout": "HORIZONTAL",
+        "width": "FILL",
+        "padding": { "top": 12, "right": 20, "bottom": 12, "left": 20 },
+        "background": "#0D99FF",
+        "cornerRadius": 8,
+        "alignItems": "CENTER",
+        "children": [
+          {
+            "type": "TEXT",
+            "text": "Start 14-Day Free Trial",
+            "fontWeight": "SemiBold",
+            "fontSize": 14,
+            "color": "#FFFFFF",
+            "textAlign": "CENTER",
+            "width": "FILL"
+          }
+        ]
+      }
+    ]
+  }
+}

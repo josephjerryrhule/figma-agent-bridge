@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Canvas Bridge</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;
+      --surface: #252526;
+      --surface-border: #333333;
+      --text: #ffffff;
+      --text-muted: #999999;
+      --accent: #0d99ff;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--surface-border);
+      margin-bottom: 10px;
+    }
+
+    .title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      background: linear-gradient(135deg, #0d99ff, #9747ff);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 11px;
+    }
+
+    .title {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 6px var(--danger);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .info-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .info-value {
+      color: var(--text);
+      font-family: monospace;
+    }
+
+    .agents-list {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    .agent-tag {
+      background: #2d2d30;
+      border: 1px solid #3c3c3c;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      color: #cccccc;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logs-container {
+      flex: 1;
+      overflow-y: auto;
+      background: #181818;
+      border: 1px solid var(--surface-border);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .log-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 4px 6px;
+      background: #202022;
+      border-left: 3px solid var(--accent);
+      border-radius: 3px;
+    }
+
+    .log-item.error {
+      border-left-color: var(--danger);
+    }
+
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .log-cmd {
+      font-weight: 600;
+      color: #e0e0e0;
+    }
+
+    .log-detail {
+      color: #aaaaaa;
+      word-break: break-all;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button {
+      flex: 1;
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--surface-border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    button:hover {
+      background: #333336;
+      border-color: #444;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    button.primary:hover {
+      background: #0b80d6;
+    }
+
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title-group">
+      <div class="logo">⚡</div>
+      <div class="title">Agent Canvas</div>
+    </div>
+    <div class="badge" id="statusBadge">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Connecting...</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="info-row">
+      <span>Relay Target:</span>
+      <span class="info-value" id="serverUrl">ws://localhost:3055</span>
+    </div>
+    <div class="info-row">
+      <span>Connected Agents:</span>
+      <div class="agents-list">
+        <span class="agent-tag">AGY</span>
+        <span class="agent-tag">Claude</span>
+        <span class="agent-tag">Codex</span>
+        <span class="agent-tag">ChatGPT</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">
+    <span>Live Command Stream</span>
+    <span id="logCount" style="font-weight: normal;">0 events</span>
+  </div>
+
+  <div class="logs-container" id="logsContainer">
+    <div class="empty-state" id="emptyLogs">Waiting for agent commands...</div>
+  </div>
+
+  <div class="actions">
+    <button id="btnPing">⚡ Test Ping</button>
+    <button id="btnClear">Clear Logs</button>
+    <button class="primary" id="btnReconnect">Reconnect</button>
+  </div>
+
+  <script>
+    const WS_URL = 'ws://127.0.0.1:3055';
+    let socket = null;
+    let reconnectTimeout = null;
+    let commandCount = 0;
+
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const logsContainer = document.getElementById('logsContainer');
+    const emptyLogs = document.getElementById('emptyLogs');
+    const logCount = document.getElementById('logCount');
+
+    function updateStatus(connected, text) {
+      if (connected) {
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = text || 'Connected';
+      } else {
+        statusDot.className = 'status-dot';
+        statusText.textContent = text || 'Disconnected';
+      }
+    }
+
+    function addLog(command, detail, isError = false, timeMs = null) {
+      if (emptyLogs) emptyLogs.style.display = 'none';
+
+      commandCount++;
+      logCount.textContent = `${commandCount} events`;
+
+      const item = document.createElement('div');
+      item.className = 'log-item' + (isError ? ' error' : '');
+
+      const now = new Date().toLocaleTimeString();
+      const timeTag = timeMs ? ` (${timeMs}ms)` : '';
+
+      item.innerHTML = `
+        <div class="log-header">
+          <span class="log-cmd">${command}</span>
+          <span>${now}${timeTag}</span>
+        </div>
+        <div class="log-detail">${detail}</div>
+      `;
+
+      logsContainer.appendChild(item);
+      logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
+
+    function connectWebSocket() {
+      if (socket) {
+        try { socket.close(); } catch (_) {}
+      }
+
+      updateStatus(false, 'Connecting...');
+
+      try {
+        socket = new WebSocket(WS_URL);
+
+        socket.onopen = () => {
+          updateStatus(true, 'Live (Port 3055)');
+          addLog('BRIDGE', 'Connected to local Agent Bridge server');
+          
+          // Send handshake
+          socket.send(JSON.stringify({
+            type: 'PLUGIN_CONNECTED',
+            timestamp: Date.now()
+          }));
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            addLog(data.command || 'COMMAND', `Agent dispatched: ${JSON.stringify(data.payload || {}).slice(0, 80)}`);
+
+            // Forward to Figma Sandbox code.ts
+            parent.postMessage({ pluginMessage: data }, '*');
+          } catch (e) {
+            addLog('PARSE_ERROR', e.message, true);
+          }
+        };
+
+        socket.onclose = () => {
+          updateStatus(false, 'Disconnected');
+          scheduleReconnect();
+        };
+
+        socket.onerror = () => {
+          updateStatus(false, 'Connection Error');
+        };
+      } catch (err) {
+        updateStatus(false, 'Offline');
+        scheduleReconnect();
+      }
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      reconnectTimeout = setTimeout(() => {
+        connectWebSocket();
+      }, 3000);
+    }
+
+    // Listen for responses back from Figma Sandbox (code.ts)
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.success) {
+        addLog(
+          'SUCCESS',
+          msg.data?.name || msg.data?.id || (typeof msg.data === 'object' ? 'Completed' : String(msg.data)),
+          false,
+          msg.executionTimeMs
+        );
+      } else {
+        addLog('ERROR', msg.error || 'Execution failed', true, msg.executionTimeMs);
+      }
+
+      // Forward response back over WebSocket to the AI agent
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(msg));
+      }
+    };
+
+    // UI Buttons
+    document.getElementById('btnPing').onclick = () => {
+      parent.postMessage({
+        pluginMessage: {
+          id: 'ping-' + Date.now(),
+          command: 'GET_STATUS',
+          payload: {}
+        }
+      }, '*');
+    };
+
+    document.getElementById('btnClear').onclick = () => {
+      logsContainer.innerHTML = '<div class="empty-state" id="emptyLogs">Waiting for agent commands...</div>';
+      commandCount = 0;
+      logCount.textContent = '0 events';
+    };
+
+    document.getElementById('btnReconnect').onclick = () => {
+      connectWebSocket();
+    };
+
+    // Auto connect on startup
+    connectWebSocket();
+  </script>
+</body>
+</html>

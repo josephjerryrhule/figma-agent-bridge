@@ -1,0 +1,118 @@
+{
+  "root": {
+    "type": "FRAME",
+    "name": "Hero Section",
+    "layout": "VERTICAL",
+    "width": 1200,
+    "height": "HUG",
+    "gap": 32,
+    "padding": { "top": 80, "right": 80, "bottom": 80, "left": 80 },
+    "background": "#0B0F19",
+    "alignItems": "CENTER",
+    "cornerRadius": 16,
+    "children": [
+      {
+        "type": "FRAME",
+        "name": "Announcement Badge",
+        "layout": "HORIZONTAL",
+        "gap": 8,
+        "padding": { "top": 6, "right": 14, "bottom": 6, "left": 14 },
+        "background": "#1E293B",
+        "cornerRadius": 20,
+        "stroke": { "color": "#334155", "weight": 1 },
+        "alignItems": "CENTER",
+        "children": [
+          {
+            "type": "TEXT",
+            "name": "Badge Icon",
+            "text": "✨",
+            "fontSize": 12
+          },
+          {
+            "type": "TEXT",
+            "name": "Badge Text",
+            "text": "Universal Figma AI Bridge v1.0",
+            "fontSize": 12,
+            "fontWeight": "Medium",
+            "color": "#94A3B8"
+          }
+        ]
+      },
+      {
+        "type": "FRAME",
+        "name": "Header Block",
+        "layout": "VERTICAL",
+        "gap": 16,
+        "alignItems": "CENTER",
+        "children": [
+          {
+            "type": "TEXT",
+            "name": "Main Title",
+            "text": "Design at the speed of thought.",
+            "fontFamily": "Inter",
+            "fontWeight": "Bold",
+            "fontSize": 56,
+            "color": "#F8FAFC",
+            "textAlign": "CENTER"
+          },
+          {
+            "type": "TEXT",
+            "name": "Subtitle",
+            "text": "Let AGY, Claude, Codex, and ChatGPT build, inspect, and polish production UI directly inside your Figma canvas.",
+            "fontFamily": "Inter",
+            "fontSize": 18,
+            "color": "#94A3B8",
+            "textAlign": "CENTER",
+            "width": 640
+          }
+        ]
+      },
+      {
+        "type": "FRAME",
+        "name": "CTA Row",
+        "layout": "HORIZONTAL",
+        "gap": 16,
+        "alignItems": "CENTER",
+        "children": [
+          {
+            "type": "FRAME",
+            "name": "Primary Button",
+            "layout": "HORIZONTAL",
+            "padding": { "top": 14, "right": 28, "bottom": 14, "left": 28 },
+            "background": "#0D99FF",
+            "cornerRadius": 8,
+            "alignItems": "CENTER",
+            "children": [
+              {
+                "type": "TEXT",
+                "text": "Launch Plugin",
+                "fontWeight": "SemiBold",
+                "fontSize": 15,
+                "color": "#FFFFFF"
+              }
+            ]
+          },
+          {
+            "type": "FRAME",
+            "name": "Secondary Button",
+            "layout": "HORIZONTAL",
+            "padding": { "top": 14, "right": 28, "bottom": 14, "left": 28 },
+            "background": "#1E293B",
+            "cornerRadius": 8,
+            "stroke": { "color": "#334155", "weight": 1 },
+            "alignItems": "CENTER",
+            "children": [
+              {
+                "type": "TEXT",
+                "text": "View Documentation",
+                "fontWeight": "Medium",
+                "fontSize": 15,
+                "color": "#E2E8F0"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
