@@ -45,7 +45,7 @@ export interface BridgeResponse<T = any> {
 // Declarative Layout DSL Types
 // ==========================================
 
-export type LayoutNodeType = 'FRAME' | 'TEXT' | 'RECTANGLE' | 'ELLIPSE';
+export type LayoutNodeType = 'FRAME' | 'TEXT' | 'RECTANGLE' | 'ELLIPSE' | 'IMAGE' | 'SVG' | 'VIDEO';
 
 export type LayoutSizing = number | 'HUG' | 'FILL';
 

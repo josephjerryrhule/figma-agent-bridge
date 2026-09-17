@@ -213,6 +213,10 @@ export class WebSocketBridge {
         return { path: '/v1/duplicate', method: 'POST' };
       case 'CAPTURE_SCREENSHOT':
         return { path: '/v1/screenshot', method: 'POST' };
+      case 'EXPORT_NODES':
+        return { path: '/v1/export', method: 'POST' };
+      case 'INSERT_MEDIA':
+        return { path: '/v1/media', method: 'POST' };
       case 'EXECUTE_CODE':
         return { path: '/v1/execute', method: 'POST' };
       case 'UNDO':

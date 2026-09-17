@@ -22,23 +22,40 @@ import { serializeNode } from './inspector';
  * Recursively creates a native Figma node tree from a declarative LayoutNode spec.
  */
 export async function createNodeFromLayout(spec: LayoutNode): Promise<SceneNode> {
+  let node: SceneNode;
   switch (spec.type) {
     case 'TEXT':
-      return createTextNode(spec);
+      node = await createTextNode(spec);
+      break;
     case 'RECTANGLE':
-      return createRectangleNode(spec);
+      node = createRectangleNode(spec);
+      break;
     case 'ELLIPSE':
-      return createEllipseNode(spec);
+      node = createEllipseNode(spec);
+      break;
     case 'IMAGE':
-      return createImageNode(spec);
+      node = await createImageNode(spec);
+      break;
     case 'SVG':
-      return createSvgNode(spec);
+      node = await createSvgNode(spec);
+      break;
     case 'VIDEO':
-      return createVideoNode(spec);
+      node = await createVideoNode(spec);
+      break;
     case 'FRAME':
     default:
-      return createFrameNode(spec);
+      node = await createFrameNode(spec);
+      break;
   }
+
+  if ((spec as any).x !== undefined && 'x' in node) {
+    node.x = (spec as any).x;
+  }
+  if ((spec as any).y !== undefined && 'y' in node) {
+    node.y = (spec as any).y;
+  }
+
+  return node;
 }
 
 async function createTextNode(spec: TextLayoutNode): Promise<TextNode> {
