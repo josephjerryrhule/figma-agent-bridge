@@ -1,6 +1,8 @@
 /**
  * Declarative Layout Parser & Builder for Figma Agent Bridge.
  * Translates modern flexbox-style JSON layout trees into native Figma Auto Layout node structures.
+ * Supports Auto Layout v4 (wrap, cross-axis spacing), responsive sizing (FILL/HUG),
+ * absolute positioning in Auto Layout, min/max constraints, and elevation effects.
  */
 
 import {
@@ -17,28 +19,63 @@ import {
 import { createSolidPaint } from './colors';
 import { ensureFontLoaded } from './fonts';
 import { serializeNode } from './inspector';
+import { parseEffects } from './effects';
 
 /**
  * Recursively creates a native Figma node tree from a declarative LayoutNode spec.
  */
 export async function createNodeFromLayout(spec: LayoutNode): Promise<SceneNode> {
+  let node: SceneNode;
   switch (spec.type) {
     case 'TEXT':
-      return createTextNode(spec);
+      node = await createTextNode(spec);
+      break;
     case 'RECTANGLE':
-      return createRectangleNode(spec);
+      node = createRectangleNode(spec);
+      break;
     case 'ELLIPSE':
-      return createEllipseNode(spec);
+      node = createEllipseNode(spec);
+      break;
     case 'IMAGE':
-      return createImageNode(spec);
+      node = await createImageNode(spec);
+      break;
     case 'SVG':
-      return createSvgNode(spec);
+      node = await createSvgNode(spec);
+      break;
     case 'VIDEO':
-      return createVideoNode(spec);
+      node = await createVideoNode(spec);
+      break;
     case 'FRAME':
     default:
-      return createFrameNode(spec);
+      node = await createFrameNode(spec);
+      break;
   }
+
+  if ((spec as any).x !== undefined && 'x' in node) {
+    node.x = (spec as any).x;
+  }
+  if ((spec as any).y !== undefined && 'y' in node) {
+    node.y = (spec as any).y;
+  }
+
+  if (spec.layoutPositioning === 'ABSOLUTE' && 'layoutPositioning' in node) {
+    (node as any).layoutPositioning = 'ABSOLUTE';
+  }
+
+  if (spec.layoutGrow !== undefined && 'layoutGrow' in node) {
+    (node as any).layoutGrow = spec.layoutGrow;
+  }
+
+  if (spec.layoutAlign !== undefined && 'layoutAlign' in node) {
+    (node as any).layoutAlign = spec.layoutAlign;
+  }
+
+  if (spec.minWidth !== undefined && 'minWidth' in node) (node as any).minWidth = spec.minWidth;
+  if (spec.maxWidth !== undefined && 'maxWidth' in node) (node as any).maxWidth = spec.maxWidth;
+  if (spec.minHeight !== undefined && 'minHeight' in node) (node as any).minHeight = spec.minHeight;
+  if (spec.maxHeight !== undefined && 'maxHeight' in node) (node as any).maxHeight = spec.maxHeight;
+
+  return node;
 }
 
 async function createTextNode(spec: TextLayoutNode): Promise<TextNode> {
@@ -70,6 +107,10 @@ async function createTextNode(spec: TextLayoutNode): Promise<TextNode> {
     textNode.lineHeight = { value: spec.lineHeight, unit: 'PIXELS' };
   }
 
+  if (spec.effects && spec.effects.length > 0) {
+    textNode.effects = parseEffects(spec.effects);
+  }
+
   if (spec.visible !== undefined) {
     textNode.visible = spec.visible;
   }
@@ -87,12 +128,23 @@ function createRectangleNode(spec: ShapeLayoutNode): RectangleNode {
   }
 
   if (spec.cornerRadius) {
-    rect.cornerRadius = spec.cornerRadius;
+    if (typeof spec.cornerRadius === 'number') {
+      rect.cornerRadius = spec.cornerRadius;
+    } else if (Array.isArray(spec.cornerRadius)) {
+      rect.topLeftRadius = spec.cornerRadius[0] ?? 0;
+      rect.topRightRadius = spec.cornerRadius[1] ?? 0;
+      rect.bottomRightRadius = spec.cornerRadius[2] ?? 0;
+      rect.bottomLeftRadius = spec.cornerRadius[3] ?? 0;
+    }
   }
 
   if (spec.stroke) {
     rect.strokes = createSolidPaint(spec.stroke.color);
     if (spec.stroke.weight) rect.strokeWeight = spec.stroke.weight;
+  }
+
+  if (spec.effects && spec.effects.length > 0) {
+    rect.effects = parseEffects(spec.effects);
   }
 
   if (spec.visible !== undefined) {
@@ -114,6 +166,10 @@ function createEllipseNode(spec: ShapeLayoutNode): EllipseNode {
   if (spec.stroke) {
     ellipse.strokes = createSolidPaint(spec.stroke.color);
     if (spec.stroke.weight) ellipse.strokeWeight = spec.stroke.weight;
+  }
+
+  if (spec.effects && spec.effects.length > 0) {
+    ellipse.effects = parseEffects(spec.effects);
   }
 
   if (spec.visible !== undefined) {
@@ -161,6 +217,10 @@ async function createImageNode(spec: ImageLayoutNode): Promise<RectangleNode> {
   if (spec.stroke) {
     rect.strokes = createSolidPaint(spec.stroke.color);
     if (spec.stroke.weight) rect.strokeWeight = spec.stroke.weight;
+  }
+
+  if (spec.effects && spec.effects.length > 0) {
+    rect.effects = parseEffects(spec.effects);
   }
 
   if (spec.opacity !== undefined) {
@@ -247,11 +307,6 @@ async function createVideoNode(spec: VideoLayoutNode): Promise<RectangleNode> {
     rect.visible = spec.visible;
   }
 
-  if (spec.x !== undefined && spec.y !== undefined) {
-    rect.x = spec.x;
-    rect.y = spec.y;
-  }
-
   return rect;
 }
 
@@ -260,8 +315,9 @@ async function createFrameNode(spec: FrameLayoutNode): Promise<FrameNode> {
   if (spec.name) frame.name = spec.name;
 
   // Background fills
-  if (spec.background) {
-    frame.fills = createSolidPaint(spec.background, spec.opacity);
+  const bg = spec.fill || spec.background;
+  if (bg) {
+    frame.fills = createSolidPaint(bg, spec.opacity);
   } else {
     frame.fills = [];
   }
@@ -291,11 +347,22 @@ async function createFrameNode(spec: FrameLayoutNode): Promise<FrameNode> {
   }
 
   // Auto Layout configuration
-  if (spec.layout && spec.layout !== 'NONE') {
-    frame.layoutMode = spec.layout;
+  const layoutMode = spec.layoutMode || spec.layout;
+  if (layoutMode && layoutMode !== 'NONE') {
+    frame.layoutMode = layoutMode;
 
-    if (spec.gap !== undefined) {
-      frame.itemSpacing = spec.gap;
+    // Wrap
+    if (spec.layoutWrap && 'layoutWrap' in frame) {
+      frame.layoutWrap = spec.layoutWrap;
+    }
+
+    // Spacing
+    const gap = spec.gap !== undefined ? spec.gap : spec.itemSpacing;
+    if (gap !== undefined) {
+      frame.itemSpacing = gap;
+    }
+    if (spec.counterAxisSpacing !== undefined && 'counterAxisSpacing' in frame) {
+      frame.counterAxisSpacing = spec.counterAxisSpacing;
     }
 
     // Padding
@@ -305,6 +372,20 @@ async function createFrameNode(spec: FrameLayoutNode): Promise<FrameNode> {
         frame.paddingRight = spec.padding;
         frame.paddingBottom = spec.padding;
         frame.paddingLeft = spec.padding;
+      } else if (Array.isArray(spec.padding)) {
+        if (spec.padding.length === 2) {
+          const [v, h] = spec.padding;
+          frame.paddingTop = v;
+          frame.paddingBottom = v;
+          frame.paddingRight = h;
+          frame.paddingLeft = h;
+        } else if (spec.padding.length === 4) {
+          const [t, r, b, l] = spec.padding;
+          frame.paddingTop = t;
+          frame.paddingRight = r;
+          frame.paddingBottom = b;
+          frame.paddingLeft = l;
+        }
       } else {
         if (spec.padding.top !== undefined) frame.paddingTop = spec.padding.top;
         if (spec.padding.right !== undefined) frame.paddingRight = spec.padding.right;
@@ -313,13 +394,49 @@ async function createFrameNode(spec: FrameLayoutNode): Promise<FrameNode> {
       }
     }
 
+    if (spec.paddingTop !== undefined) frame.paddingTop = spec.paddingTop;
+    if (spec.paddingRight !== undefined) frame.paddingRight = spec.paddingRight;
+    if (spec.paddingBottom !== undefined) frame.paddingBottom = spec.paddingBottom;
+    if (spec.paddingLeft !== undefined) frame.paddingLeft = spec.paddingLeft;
+    if (spec.paddingHorizontal !== undefined) {
+      frame.paddingLeft = spec.paddingHorizontal;
+      frame.paddingRight = spec.paddingHorizontal;
+    }
+    if (spec.paddingVertical !== undefined) {
+      frame.paddingTop = spec.paddingVertical;
+      frame.paddingBottom = spec.paddingVertical;
+    }
+
     // Alignment
-    if (spec.alignItems) {
-      frame.primaryAxisAlignItems = spec.alignItems;
+    const primaryAlign = spec.primaryAxisAlignItems || spec.alignItems;
+    if (primaryAlign) {
+      frame.primaryAxisAlignItems = primaryAlign;
     }
-    if (spec.counterAlignItems) {
-      frame.counterAxisAlignItems = spec.counterAlignItems;
+    const counterAlign = spec.counterAxisAlignItems || spec.counterAlignItems;
+    if (counterAlign) {
+      frame.counterAxisAlignItems = counterAlign;
     }
+    if (spec.counterAxisAlignContent && 'counterAxisAlignContent' in frame) {
+      frame.counterAxisAlignContent = spec.counterAxisAlignContent;
+    }
+
+    if (spec.strokesIncludedInLayout !== undefined && 'strokesIncludedInLayout' in frame) {
+      frame.strokesIncludedInLayout = spec.strokesIncludedInLayout;
+    }
+    if (spec.itemReverseZIndex !== undefined && 'itemReverseZIndex' in frame) {
+      frame.itemReverseZIndex = spec.itemReverseZIndex;
+    }
+  }
+
+  // Min / Max Dimensions
+  if (spec.minWidth !== undefined && 'minWidth' in frame) frame.minWidth = spec.minWidth;
+  if (spec.maxWidth !== undefined && 'maxWidth' in frame) frame.maxWidth = spec.maxWidth;
+  if (spec.minHeight !== undefined && 'minHeight' in frame) frame.minHeight = spec.minHeight;
+  if (spec.maxHeight !== undefined && 'maxHeight' in frame) frame.maxHeight = spec.maxHeight;
+
+  // Elevation Effects (Shadows & Blurs)
+  if (spec.effects && spec.effects.length > 0) {
+    frame.effects = parseEffects(spec.effects);
   }
 
   // Initial sizing before appending children
@@ -334,40 +451,51 @@ async function createFrameNode(spec: FrameLayoutNode): Promise<FrameNode> {
       frame.appendChild(childNode);
 
       // Child sizing relative to Auto Layout parent
-      if (spec.layout && spec.layout !== 'NONE') {
+      if (layoutMode && layoutMode !== 'NONE') {
+        if (childSpec.layoutPositioning === 'ABSOLUTE' && 'layoutPositioning' in childNode) {
+          (childNode as any).layoutPositioning = 'ABSOLUTE';
+          if (childSpec.x !== undefined) childNode.x = childSpec.x;
+          if (childSpec.y !== undefined) childNode.y = childSpec.y;
+        }
+
         if ('layoutSizingHorizontal' in childNode) {
-          if (childSpec.type === 'FRAME' || childSpec.type === 'TEXT') {
-            const childWidth = (childSpec as any).width;
-            if (childWidth === 'FILL') {
-              (childNode as any).layoutSizingHorizontal = 'FILL';
-            } else if (childWidth === 'HUG') {
-              (childNode as any).layoutSizingHorizontal = 'HUG';
-            } else if (typeof childWidth === 'number') {
-              (childNode as any).layoutSizingHorizontal = 'FIXED';
-            }
+          const childWidth = (childSpec as any).width;
+          if (childWidth === 'FILL') {
+            (childNode as any).layoutSizingHorizontal = 'FILL';
+          } else if (childWidth === 'HUG') {
+            (childNode as any).layoutSizingHorizontal = 'HUG';
+          } else if (typeof childWidth === 'number') {
+            (childNode as any).layoutSizingHorizontal = 'FIXED';
           }
         }
 
         if ('layoutSizingVertical' in childNode) {
-          if (childSpec.type === 'FRAME' || childSpec.type === 'TEXT') {
-            const childHeight = (childSpec as any).height;
-            if (childHeight === 'FILL') {
-              (childNode as any).layoutSizingVertical = 'FILL';
-            } else if (childHeight === 'HUG') {
-              (childNode as any).layoutSizingVertical = 'HUG';
-            } else if (typeof childHeight === 'number') {
-              (childNode as any).layoutSizingVertical = 'FIXED';
-            }
+          const childHeight = (childSpec as any).height;
+          if (childHeight === 'FILL') {
+            (childNode as any).layoutSizingVertical = 'FILL';
+          } else if (childHeight === 'HUG') {
+            (childNode as any).layoutSizingVertical = 'HUG';
+          } else if (typeof childHeight === 'number') {
+            (childNode as any).layoutSizingVertical = 'FIXED';
           }
+        }
+
+        if (childSpec.layoutGrow !== undefined && 'layoutGrow' in childNode) {
+          (childNode as any).layoutGrow = childSpec.layoutGrow;
+        }
+        if (childSpec.layoutAlign !== undefined && 'layoutAlign' in childNode) {
+          (childNode as any).layoutAlign = childSpec.layoutAlign;
         }
       }
     }
   }
 
   // Set parent layout sizing
-  if (spec.layout && spec.layout !== 'NONE') {
+  if (layoutMode && layoutMode !== 'NONE') {
     if (spec.width === 'HUG') {
       frame.layoutSizingHorizontal = 'HUG';
+    } else if (spec.width === 'FILL') {
+      frame.layoutSizingHorizontal = 'FILL';
     } else if (typeof spec.width === 'number') {
       frame.layoutSizingHorizontal = 'FIXED';
       frame.resize(spec.width, frame.height);
@@ -375,6 +503,8 @@ async function createFrameNode(spec: FrameLayoutNode): Promise<FrameNode> {
 
     if (spec.height === 'HUG') {
       frame.layoutSizingVertical = 'HUG';
+    } else if (spec.height === 'FILL') {
+      frame.layoutSizingVertical = 'FILL';
     } else if (typeof spec.height === 'number') {
       frame.layoutSizingVertical = 'FIXED';
       frame.resize(frame.width, spec.height);

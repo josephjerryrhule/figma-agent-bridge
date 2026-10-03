@@ -11,6 +11,16 @@ export type BridgeCommandType =
   | 'GET_DOCUMENT_INFO'
   | 'RENDER_LAYOUT'
   | 'UPDATE_NODE'
+  | 'SET_AUTO_LAYOUT'
+  | 'CREATE_COMPONENT'
+  | 'CREATE_COMPONENT_SET'
+  | 'CREATE_INSTANCE'
+  | 'CREATE_STYLE'
+  | 'APPLY_STYLE'
+  | 'GET_VARIABLES'
+  | 'CREATE_VARIABLE'
+  | 'GROUP_NODES'
+  | 'BOOLEAN_OPERATION'
   | 'APPEND_CHILDREN'
   | 'REPLACE_CHILDREN'
   | 'DELETE_NODES'
@@ -19,6 +29,8 @@ export type BridgeCommandType =
   | 'EXPORT_NODES'
   | 'CAPTURE_SCREENSHOT'
   | 'EXECUTE_CODE'
+  | 'GET_SPEAKER_NOTES'
+  | 'SET_SPEAKER_NOTES'
   | 'GET_SESSION_HISTORY'
   | 'UNDO'
   | 'REDO';
@@ -41,18 +53,49 @@ export interface BridgeResponse<T = any> {
   executionTimeMs?: number;
 }
 
+export interface PluginConnectionInfo {
+  fileName: string;
+  fileKey: string | null;
+  editorType: string;
+  pageName: string;
+  instanceId: string;
+}
+
+export interface PluginInfoMessage extends PluginConnectionInfo {
+  type: 'PLUGIN_INFO';
+}
+
 // ==========================================
 // Declarative Layout DSL Types
 // ==========================================
 
-export type LayoutNodeType = 'FRAME' | 'TEXT' | 'RECTANGLE' | 'ELLIPSE';
+export type LayoutNodeType = 'FRAME' | 'TEXT' | 'RECTANGLE' | 'ELLIPSE' | 'IMAGE' | 'SVG' | 'VIDEO';
 
 export type LayoutSizing = number | 'HUG' | 'FILL';
+
+export interface EffectSpec {
+  type: 'DROP_SHADOW' | 'INNER_SHADOW' | 'LAYER_BLUR' | 'BACKGROUND_BLUR';
+  color?: string; // hex "#000000" or rgba
+  opacity?: number;
+  offset?: { x: number; y: number };
+  radius?: number;
+  spread?: number;
+  visible?: boolean;
+  blendMode?: string;
+}
 
 export interface BaseLayoutNode {
   type: LayoutNodeType;
   name?: string;
   visible?: boolean;
+  layoutPositioning?: 'AUTO' | 'ABSOLUTE';
+  layoutGrow?: number;
+  layoutAlign?: 'INHERIT' | 'STRETCH';
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  effects?: EffectSpec[];
 }
 
 export interface TextLayoutNode extends BaseLayoutNode {
@@ -68,6 +111,8 @@ export interface TextLayoutNode extends BaseLayoutNode {
   lineHeight?: number | 'AUTO';
   width?: LayoutSizing;
   height?: LayoutSizing;
+  x?: number;
+  y?: number;
 }
 
 export interface ShapeLayoutNode extends BaseLayoutNode {
@@ -76,11 +121,14 @@ export interface ShapeLayoutNode extends BaseLayoutNode {
   height: number;
   fill?: string;
   opacity?: number;
-  cornerRadius?: number;
+  cornerRadius?: number | [number, number, number, number];
   stroke?: {
     color: string;
     weight?: number;
+    align?: 'INSIDE' | 'OUTSIDE' | 'CENTER';
   };
+  x?: number;
+  y?: number;
 }
 
 export interface PaddingConfig {
@@ -93,13 +141,27 @@ export interface PaddingConfig {
 export interface FrameLayoutNode extends BaseLayoutNode {
   type: 'FRAME';
   layout?: 'HORIZONTAL' | 'VERTICAL' | 'NONE';
+  layoutMode?: 'HORIZONTAL' | 'VERTICAL' | 'NONE';
+  layoutWrap?: 'NO_WRAP' | 'WRAP';
   width?: LayoutSizing;
   height?: LayoutSizing;
   gap?: number;
-  padding?: number | PaddingConfig;
+  itemSpacing?: number;
+  counterAxisSpacing?: number;
+  padding?: number | PaddingConfig | [number, number] | [number, number, number, number];
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  paddingHorizontal?: number;
+  paddingVertical?: number;
   alignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN';
+  primaryAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN';
   counterAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE';
+  counterAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE';
+  counterAxisAlignContent?: 'AUTO' | 'SPACE_BETWEEN';
   background?: string;
+  fill?: string;
   opacity?: number;
   cornerRadius?: number | [number, number, number, number];
   stroke?: {
@@ -108,6 +170,8 @@ export interface FrameLayoutNode extends BaseLayoutNode {
     align?: 'INSIDE' | 'OUTSIDE' | 'CENTER';
   };
   clipsContent?: boolean;
+  strokesIncludedInLayout?: boolean;
+  itemReverseZIndex?: boolean;
   x?: number;
   y?: number;
   children?: LayoutNode[];
@@ -171,11 +235,114 @@ export interface RenderLayoutPayload {
 }
 
 // ==========================================
+// Senior Designer & Auto Layout Types
+// ==========================================
+
+export interface SetAutoLayoutPayload {
+  nodeId?: string; // If omitted, targets current canvas selection
+  layoutMode?: 'HORIZONTAL' | 'VERTICAL' | 'NONE';
+  direction?: 'HORIZONTAL' | 'VERTICAL' | 'NONE'; // alias for layoutMode
+  layoutWrap?: 'NO_WRAP' | 'WRAP';
+  wrap?: boolean | 'NO_WRAP' | 'WRAP'; // alias
+  gap?: number;
+  itemSpacing?: number; // alias
+  counterAxisSpacing?: number;
+  padding?: number | PaddingConfig | [number, number] | [number, number, number, number];
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  paddingHorizontal?: number;
+  paddingVertical?: number;
+  alignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN';
+  primaryAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN';
+  counterAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE';
+  counterAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE';
+  counterAxisAlignContent?: 'AUTO' | 'SPACE_BETWEEN';
+  width?: LayoutSizing;
+  height?: LayoutSizing;
+  layoutSizingHorizontal?: 'FIXED' | 'HUG' | 'FILL';
+  layoutSizingVertical?: 'FIXED' | 'HUG' | 'FILL';
+  strokesIncludedInLayout?: boolean;
+  itemReverseZIndex?: boolean;
+}
+
+export interface CreateComponentPayload {
+  nodeId?: string; // Convert existing frame to component
+  spec?: LayoutNode; // Create component from layout tree
+  name?: string;
+  description?: string;
+  insertPosition?: { x: number; y: number };
+}
+
+export interface CreateComponentSetPayload {
+  componentIds: string[];
+  name?: string;
+  description?: string;
+}
+
+export interface CreateInstancePayload {
+  componentId: string;
+  name?: string;
+  x?: number;
+  y?: number;
+  targetParentId?: string;
+  variantProperties?: Record<string, string>;
+  textOverrides?: Record<string, string>;
+  width?: LayoutSizing;
+  height?: LayoutSizing;
+}
+
+export interface CreateStylePayload {
+  styleType: 'PAINT' | 'TEXT' | 'EFFECT';
+  name: string;
+  description?: string;
+  color?: string;
+  opacity?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  fontSize?: number;
+  lineHeight?: number | 'AUTO';
+  letterSpacing?: number;
+  effects?: EffectSpec[];
+}
+
+export interface ApplyStylePayload {
+  nodeId: string;
+  styleType: 'FILL' | 'STROKE' | 'TEXT' | 'EFFECT';
+  styleId?: string;
+  styleName?: string;
+}
+
+export interface GetVariablesPayload {
+  collectionId?: string;
+}
+
+export interface CreateVariablePayload {
+  collectionName?: string;
+  name: string;
+  resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN';
+  value: any;
+  modeName?: string;
+}
+
+export interface GroupNodesPayload {
+  nodeIds: string[];
+  name?: string;
+}
+
+export interface BooleanOperationPayload {
+  operation: 'UNION' | 'SUBTRACT' | 'INTERSECT' | 'EXCLUDE';
+  nodeIds: string[];
+  name?: string;
+}
+
+// ==========================================
 // Node Mutation / Edit Types
 // ==========================================
 
 export interface UpdateNodePayload {
-  id: string;
+  id?: string;
   name?: string;
   text?: string;
   fontFamily?: string;
@@ -190,18 +357,39 @@ export interface UpdateNodePayload {
     weight?: number;
     align?: 'INSIDE' | 'OUTSIDE' | 'CENTER';
   };
+  layout?: 'HORIZONTAL' | 'VERTICAL' | 'NONE';
+  layoutMode?: 'HORIZONTAL' | 'VERTICAL' | 'NONE';
+  layoutWrap?: 'NO_WRAP' | 'WRAP';
+  wrap?: boolean | 'NO_WRAP' | 'WRAP';
   gap?: number;
-  padding?: number | PaddingConfig;
+  counterAxisSpacing?: number;
+  padding?: number | PaddingConfig | [number, number] | [number, number, number, number];
   alignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN';
   counterAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE';
+  counterAxisAlignContent?: 'AUTO' | 'SPACE_BETWEEN';
   width?: LayoutSizing;
   height?: LayoutSizing;
+  layoutSizingHorizontal?: 'FIXED' | 'HUG' | 'FILL';
+  layoutSizingVertical?: 'FIXED' | 'HUG' | 'FILL';
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  layoutPositioning?: 'AUTO' | 'ABSOLUTE';
+  layoutGrow?: number;
+  layoutAlign?: 'INHERIT' | 'STRETCH';
+  strokesIncludedInLayout?: boolean;
+  itemReverseZIndex?: boolean;
+  effects?: EffectSpec[];
   visible?: boolean;
   x?: number;
   y?: number;
   imageUrl?: string;
   imageBase64?: string;
   imageScaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE';
+  videoUrl?: string;
+  videoBase64?: string;
+  videoScaleMode?: 'FILL' | 'FIT' | 'CROP';
 }
 
 export interface AppendChildrenPayload {
@@ -278,15 +466,34 @@ export interface SerializedNodeInfo {
   strokes?: any[];
   cornerRadius?: number;
   layoutMode?: string;
+  layoutWrap?: string;
   itemSpacing?: number;
+  counterAxisSpacing?: number;
   paddingTop?: number;
   paddingRight?: number;
   paddingBottom?: number;
   paddingLeft?: number;
   primaryAxisAlignItems?: string;
   counterAxisAlignItems?: string;
+  counterAxisAlignContent?: string;
   layoutSizingHorizontal?: string;
   layoutSizingVertical?: string;
+  layoutPositioning?: string;
+  layoutGrow?: number;
+  layoutAlign?: string;
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  strokesIncludedInLayout?: boolean;
+  itemReverseZIndex?: boolean;
+  effects?: any[];
+  fillStyleId?: string;
+  strokeStyleId?: string;
+  textStyleId?: string;
+  effectStyleId?: string;
+  componentPropertyDefinitions?: any;
+  variantProperties?: Record<string, string>;
   childCount?: number;
   children?: SerializedNodeInfo[];
 }
@@ -297,6 +504,7 @@ export interface DocumentInfoResult {
   pages: { id: string; name: string }[];
   localColorStyles: { id: string; name: string; colorHex: string }[];
   localTextStyles: { id: string; name: string; fontSize: number; fontName: any }[];
+  localEffectStyles: { id: string; name: string; type: string }[];
   topLevelFrames: { id: string; name: string; width: number; height: number }[];
 }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
+import { WebSocket } from 'ws';
 import { WebSocketBridge } from '../server/src/ws-bridge.js';
 import { createHttpHandler } from '../server/src/rest/api.js';
 
@@ -73,5 +74,59 @@ describe('REST API & OpenAPI Endpoints', () => {
     const json = (await res.json()) as any;
     expect(json.success).toBe(false);
     expect(json.error).toContain('Must provide target node "id" or "name"');
+  });
+
+  it('lists connected files and routes REST requests by header or active file', async () => {
+    const connectPlugin = async (fileName: string) => {
+      const ws = new WebSocket(`ws://localhost:${port}`);
+      await new Promise<void>((resolve, reject) => {
+        ws.on('open', () => {
+          ws.send(JSON.stringify({ type: 'PLUGIN_CONNECTED', fileName, editorType: 'figma', pageName: 'Page 1' }));
+          resolve();
+        });
+        ws.on('error', reject);
+      });
+      ws.on('message', raw => {
+        const request = JSON.parse(raw.toString());
+        ws.send(JSON.stringify({ id: request.id, success: true, data: { fileName, payload: request.payload } }));
+      });
+      return ws;
+    };
+    const closeSocket = (ws: WebSocket) => new Promise<void>(resolve => {
+      ws.once('close', () => resolve());
+      ws.close();
+    });
+
+    const fileA = await connectPlugin('File A');
+    const fileB = await connectPlugin('File B');
+    await new Promise(resolve => setTimeout(resolve, 30));
+
+    try {
+      const files = await fetch(`http://localhost:${port}/v1/files`);
+      expect((await files.json() as any[]).map(file => file.fileName)).toEqual(expect.arrayContaining(['File A', 'File B']));
+
+      const targeted = await fetch(`http://localhost:${port}/v1/inspect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Figma-File': 'File A' },
+        body: JSON.stringify({ id: '1:2', file: 'File B' })
+      });
+      expect((await targeted.json() as any).data).toEqual({ fileName: 'File A', payload: { id: '1:2' } });
+
+      const activated = await fetch(`http://localhost:${port}/v1/files/active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: 'File B' })
+      });
+      expect((await activated.json() as any).data.fileName).toBe('File B');
+
+      const defaulted = await fetch(`http://localhost:${port}/v1/inspect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: '1:3' })
+      });
+      expect((await defaulted.json() as any).data.fileName).toBe('File B');
+    } finally {
+      await Promise.all([closeSocket(fileA), closeSocket(fileB)]);
+    }
   });
 });

@@ -33,6 +33,37 @@ export function getOpenApiSpec(serverUrl = 'http://localhost:3055') {
           }
         }
       },
+      '/v1/files': {
+        get: {
+          summary: 'List connected Figma files and the default routing target',
+          operationId: 'listFiles',
+          responses: {
+            '200': { description: 'Connected plugin instances' }
+          }
+        }
+      },
+      '/v1/files/active': {
+        post: {
+          summary: 'Set the default Figma file for requests without X-Figma-File',
+          operationId: 'setActiveFile',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['file'],
+                  properties: { file: { type: 'string', description: 'File name, file key, or client id' } }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Selected file' },
+            '400': { description: 'Missing file target' }
+          }
+        }
+      },
       '/v1/selection': {
         get: {
           summary: 'Get currently selected Figma nodes',
@@ -227,6 +258,240 @@ export function getOpenApiSpec(serverUrl = 'http://localhost:3055') {
           },
           responses: {
             '200': { description: 'Deletion report' }
+          }
+        }
+      },
+      '/v1/auto-layout': {
+        post: {
+          summary: 'Configure Auto Layout on a node or selection (Shift+A)',
+          operationId: 'setAutoLayout',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    nodeId: { type: 'string' },
+                    layoutMode: { type: 'string', enum: ['HORIZONTAL', 'VERTICAL', 'NONE'] },
+                    layoutWrap: { type: 'string', enum: ['NO_WRAP', 'WRAP'] },
+                    gap: { type: 'number' },
+                    padding: { type: 'number' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Updated node' }
+          }
+        }
+      },
+      '/v1/component': {
+        post: {
+          summary: 'Create a master Component from a frame or layout spec',
+          operationId: 'createComponent',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    nodeId: { type: 'string' },
+                    spec: { type: 'object' },
+                    name: { type: 'string' },
+                    description: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Created master component' }
+          }
+        }
+      },
+      '/v1/component-set': {
+        post: {
+          summary: 'Combine components into a Variant Component Set',
+          operationId: 'createComponentSet',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['componentIds'],
+                  properties: {
+                    componentIds: { type: 'array', items: { type: 'string' } },
+                    name: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Created component set' }
+          }
+        }
+      },
+      '/v1/instance': {
+        post: {
+          summary: 'Create an instance of a Component',
+          operationId: 'createInstance',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['componentId'],
+                  properties: {
+                    componentId: { type: 'string' },
+                    name: { type: 'string' },
+                    variantProperties: { type: 'object' },
+                    textOverrides: { type: 'object' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Created component instance' }
+          }
+        }
+      },
+      '/v1/style': {
+        post: {
+          summary: 'Create a Paint, Text, or Effect style',
+          operationId: 'createStyle',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['styleType', 'name'],
+                  properties: {
+                    styleType: { type: 'string', enum: ['PAINT', 'TEXT', 'EFFECT'] },
+                    name: { type: 'string' },
+                    color: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Created style info' }
+          }
+        }
+      },
+      '/v1/apply-style': {
+        post: {
+          summary: 'Apply a style to a node',
+          operationId: 'applyStyle',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['nodeId', 'styleType'],
+                  properties: {
+                    nodeId: { type: 'string' },
+                    styleType: { type: 'string', enum: ['FILL', 'STROKE', 'TEXT', 'EFFECT'] },
+                    styleId: { type: 'string' },
+                    styleName: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Updated node' }
+          }
+        }
+      },
+      '/v1/variables': {
+        get: {
+          summary: 'Get all Figma Variables and Design Tokens',
+          operationId: 'getVariables',
+          responses: {
+            '200': { description: 'List of variable collections and modes' }
+          }
+        }
+      },
+      '/v1/variable': {
+        post: {
+          summary: 'Create a Figma Variable (Design Token)',
+          operationId: 'createVariable',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name', 'resolvedType', 'value'],
+                  properties: {
+                    collectionName: { type: 'string' },
+                    name: { type: 'string' },
+                    resolvedType: { type: 'string', enum: ['COLOR', 'FLOAT', 'STRING', 'BOOLEAN'] },
+                    value: {}
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Created variable' }
+          }
+        }
+      },
+      '/v1/group': {
+        post: {
+          summary: 'Group multiple nodes together',
+          operationId: 'groupNodes',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['nodeIds'],
+                  properties: {
+                    nodeIds: { type: 'array', items: { type: 'string' } },
+                    name: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Group node' }
+          }
+        }
+      },
+      '/v1/boolean': {
+        post: {
+          summary: 'Perform a boolean operation on vector nodes',
+          operationId: 'booleanOperation',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['operation', 'nodeIds'],
+                  properties: {
+                    operation: { type: 'string', enum: ['UNION', 'SUBTRACT', 'INTERSECT', 'EXCLUDE'] },
+                    nodeIds: { type: 'array', items: { type: 'string' } },
+                    name: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Boolean result node' }
           }
         }
       },

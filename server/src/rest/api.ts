@@ -14,7 +14,7 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Figma-File, X-Agent-Name');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -24,6 +24,8 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
 
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = url.pathname;
+    const headerFile = req.headers['x-figma-file'];
+    const requestedFile = (typeof headerFile === 'string' ? headerFile : headerFile?.[0]) || url.searchParams.get('file') || undefined;
 
     const sendJson = (statusCode: number, data: any) => {
       res.writeHead(statusCode, { 'Content-Type': 'application/json' });
@@ -33,6 +35,11 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
     // OpenAPI Spec
     if (req.method === 'GET' && (pathname === '/openapi.json' || pathname === '/v1/openapi.json')) {
       sendJson(200, getOpenApiSpec(`http://localhost:${serverPort}`));
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/v1/files') {
+      sendJson(200, wsBridge.listClients());
       return;
     }
 
@@ -49,7 +56,7 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
       }
 
       try {
-        const status = await wsBridge.sendCommand('GET_STATUS', {});
+        const status = await wsBridge.sendCommand('GET_STATUS', {}, 20000, undefined, requestedFile);
         sendJson(200, {
           status: 'ok',
           figmaConnected: true,
@@ -94,30 +101,53 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
         }
       }
 
+      if (req.method === 'POST' && pathname === '/v1/files/active') {
+        const body = await readBody();
+        if (!body.file || typeof body.file !== 'string') {
+          sendJson(400, { success: false, error: 'Missing "file" in body' });
+          return;
+        }
+        sendJson(200, { success: true, data: wsBridge.setDefaultClient(body.file) });
+        return;
+      }
+
+      const sendForFile = <T = any>(command: any, payload: any, timeoutMs: number, target = requestedFile) =>
+        wsBridge.sendCommand<T>(command, payload, timeoutMs, agent, target);
+
       if (req.method === 'GET' && pathname === '/v1/selection') {
-        const data = await wsBridge.sendCommand('GET_SELECTION', { depth: 3 }, 20000, agent);
+        const data = await sendForFile('GET_SELECTION', { depth: 3 }, 20000);
         sendJson(200, { success: true, data });
         return;
       }
 
       if (req.method === 'GET' && pathname === '/v1/document') {
-        const data = await wsBridge.sendCommand('GET_DOCUMENT_INFO', {}, 20000, agent);
+        const data = await sendForFile('GET_DOCUMENT_INFO', {}, 20000);
+        sendJson(200, { success: true, data });
+        return;
+      }
+
+      if (req.method === 'GET' && pathname === '/v1/variables') {
+        const data = await sendForFile('GET_VARIABLES', {}, 20000);
         sendJson(200, { success: true, data });
         return;
       }
 
       if (req.method === 'POST') {
         const body = await readBody();
+        const bodyFile = typeof body.file === 'string' ? body.file : undefined;
+        delete body.file;
+        const send = <T = any>(command: any, payload: any, timeoutMs: number) =>
+          sendForFile<T>(command, payload, timeoutMs, requestedFile || bodyFile);
 
         switch (pathname) {
           case '/v1/inspect': {
-            const data = await wsBridge.sendCommand('INSPECT_NODE', body, 20000, agent);
+            const data = await send('INSPECT_NODE', body, 20000);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/find': {
-            const data = await wsBridge.sendCommand('FIND_NODES', body, 20000, agent);
+            const data = await send('FIND_NODES', body, 20000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -128,7 +158,92 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               return;
             }
             body.root = await resolveLayoutTreeMedia(body.root);
-            const data = await wsBridge.sendCommand('RENDER_LAYOUT', body, 20000, agent);
+            const data = await send('RENDER_LAYOUT', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/auto-layout': {
+            const data = await send('SET_AUTO_LAYOUT', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/component': {
+            if (body.spec) {
+              body.spec = await resolveLayoutTreeMedia(body.spec);
+            }
+            const data = await send('CREATE_COMPONENT', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/component-set': {
+            if (!Array.isArray(body.componentIds) || body.componentIds.length < 2) {
+              sendJson(400, { success: false, error: 'Missing "componentIds" array with at least 2 components' });
+              return;
+            }
+            const data = await send('CREATE_COMPONENT_SET', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/instance': {
+            if (!body.componentId) {
+              sendJson(400, { success: false, error: 'Missing "componentId" in body' });
+              return;
+            }
+            const data = await send('CREATE_INSTANCE', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/style': {
+            if (!body.styleType || !body.name) {
+              sendJson(400, { success: false, error: 'Missing "styleType" (PAINT|TEXT|EFFECT) or "name" in body' });
+              return;
+            }
+            const data = await send('CREATE_STYLE', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/apply-style': {
+            if (!body.nodeId || !body.styleType) {
+              sendJson(400, { success: false, error: 'Missing "nodeId" or "styleType" in body' });
+              return;
+            }
+            const data = await send('APPLY_STYLE', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/variable': {
+            if (!body.name || !body.resolvedType || body.value === undefined) {
+              sendJson(400, { success: false, error: 'Missing "name", "resolvedType", or "value" in body' });
+              return;
+            }
+            const data = await send('CREATE_VARIABLE', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/group': {
+            if (!Array.isArray(body.nodeIds) || body.nodeIds.length === 0) {
+              sendJson(400, { success: false, error: 'Missing "nodeIds" array in body' });
+              return;
+            }
+            const data = await send('GROUP_NODES', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/boolean': {
+            if (!body.operation || !Array.isArray(body.nodeIds) || body.nodeIds.length < 2) {
+              sendJson(400, { success: false, error: 'Missing "operation" or "nodeIds" array (min 2 nodes) in body' });
+              return;
+            }
+            const data = await send('BOOLEAN_OPERATION', body, 20000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -139,7 +254,7 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               return;
             }
             const resolvedBody = await resolveUpdateNodeMedia(body);
-            const data = await wsBridge.sendCommand('UPDATE_NODE', resolvedBody, 20000, agent);
+            const data = await send('UPDATE_NODE', resolvedBody, 20000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -152,7 +267,7 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
             for (let i = 0; i < body.children.length; i++) {
               body.children[i] = await resolveLayoutTreeMedia(body.children[i]);
             }
-            const data = await wsBridge.sendCommand('APPEND_CHILDREN', body, 20000, agent);
+            const data = await send('APPEND_CHILDREN', body, 20000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -165,7 +280,7 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
             for (let i = 0; i < body.children.length; i++) {
               body.children[i] = await resolveLayoutTreeMedia(body.children[i]);
             }
-            const data = await wsBridge.sendCommand('REPLACE_CHILDREN', body, 20000, agent);
+            const data = await send('REPLACE_CHILDREN', body, 20000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -176,7 +291,7 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               return;
             }
             const resolvedPayload = await resolveMediaPayload(body);
-            const data = await wsBridge.sendCommand('INSERT_MEDIA', resolvedPayload, 25000, agent);
+            const data = await send('INSERT_MEDIA', resolvedPayload, 25000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -186,7 +301,7 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "ids" array in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('DELETE_NODES', body, 20000, agent);
+            const data = await send('DELETE_NODES', body, 20000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -196,21 +311,37 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "nodeId" in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('DUPLICATE_NODE', body, 20000, agent);
+            const data = await send('DUPLICATE_NODE', body, 20000);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/export': {
-            const rawData = await wsBridge.sendCommand('EXPORT_NODES', body, 60000, agent);
+            const rawData = await send('EXPORT_NODES', body, 60000);
             const data = await processExportResult(rawData, body);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/screenshot': {
-            const rawData = await wsBridge.sendCommand('CAPTURE_SCREENSHOT', body, 25000, agent);
+            const rawData = await send('CAPTURE_SCREENSHOT', body, 25000);
             const data = await processScreenshotResult(rawData, body);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/speaker-notes/get': {
+            const data = await send('GET_SPEAKER_NOTES', body, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
+
+          case '/v1/speaker-notes': {
+            if (!Array.isArray(body.notes) || body.notes.length === 0) {
+              sendJson(400, { success: false, error: 'Missing "notes" array in body: [{ nodeId, notes }]' });
+              return;
+            }
+            const data = await send('SET_SPEAKER_NOTES', body, 30000);
             sendJson(200, { success: true, data });
             return;
           }
@@ -220,19 +351,19 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
               sendJson(400, { success: false, error: 'Missing "code" in body' });
               return;
             }
-            const data = await wsBridge.sendCommand('EXECUTE_CODE', body, 20000, agent);
+            const data = await send('EXECUTE_CODE', body, 60000);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/undo': {
-            const data = await wsBridge.sendCommand('UNDO', {}, 20000, agent);
+            const data = await send('UNDO', {}, 20000);
             sendJson(200, { success: true, data });
             return;
           }
 
           case '/v1/redo': {
-            const data = await wsBridge.sendCommand('REDO', {}, 20000, agent);
+            const data = await send('REDO', {}, 20000);
             sendJson(200, { success: true, data });
             return;
           }

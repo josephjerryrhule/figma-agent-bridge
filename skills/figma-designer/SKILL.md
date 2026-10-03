@@ -1,6 +1,6 @@
 ---
 name: figma-designer
-description: Expert AI UI/UX design workflow for Figma using figma-agent-bridge. Allows agents to create, inspect, edit, delete, and visually verify Figma designs.
+description: Expert AI UI/UX design workflow for Figma using figma-agent-bridge. Allows agents to create, inspect, edit, delete, and visually verify Figma designs with Senior Designer tools.
 ---
 
 # Figma AI Designer Workflow
@@ -18,17 +18,25 @@ Never just create once and stop. High-quality UI generation requires an iterativ
 ### Step 1: Inspect Canvas & Tokens First
 Before creating something new, discover existing design context:
 - Call `figma_get_status` to ensure Figma is open and connected.
-- Call `figma_get_document_info` to extract local color styles, typography tokens, and existing components.
+- Call `figma_get_document_info` to extract local color styles, typography tokens, effect styles, and existing components.
+- Call `figma_get_variables` to discover design token collections, variable modes (e.g. Light/Dark mode), and values.
 - Call `figma_get_selection` if the user is pointing at an existing card/frame.
 
-### Step 2: Render Using Declarative Layouts
-Use `figma_render_layout` with standard Auto Layout:
-- Always use **Auto Layout** (`layout: 'VERTICAL'` or `'HORIZONTAL'`).
-- Set explicit `gap` and `padding`.
-- Use responsive sizing:
-  - Children should usually have `width: 'FILL'` if stretching across a column.
-  - Buttons and badges should use `width: 'HUG'`.
-- Typography scale:
+### Step 2: Render Using Senior Auto Layout Standards
+Always use native **Auto Layout** (`layout: 'VERTICAL'` or `'HORIZONTAL'`):
+- **Responsive Sizing**:
+  - Columns / containers: Set child elements to `width: 'FILL'` to stretch dynamically.
+  - Buttons / badges / tags: Set `width: 'HUG'` and `height: 'HUG'`.
+  - Min / Max constraints: Set `minWidth`, `maxWidth`, `minHeight`, or `maxHeight` to prevent layout collapse.
+- **Auto Layout Wrapping & Cross-Axis Spacing**:
+  - Set `layoutWrap: 'WRAP'` for tag clouds, pill filters, badge lists, and multi-row grids.
+  - Set `counterAxisSpacing` to control the cross-axis row gap.
+- **Absolute Positioning in Auto Layout**:
+  - For notification badges on avatars, floating "X" close buttons on modals, or decorative status dots, nest inside the Auto Layout frame with `layoutPositioning: 'ABSOLUTE'` and specify `x` and `y`.
+- **Elevation & Shadows**:
+  - Add realistic depth with `effects: [{ type: 'DROP_SHADOW', color: '#000000', opacity: 0.08, offset: { x: 0, y: 4 }, radius: 16 }]`.
+  - For glassmorphism, use `effects: [{ type: 'BACKGROUND_BLUR', radius: 12 }]` and semi-transparent fills (`#FFFFFF` with `opacity: 0.7`).
+- **Typography Scale**:
   - Display / Hero: 48-64px (Bold)
   - Section Headings: 24-32px (Bold or SemiBold)
   - Subheadings / Card Titles: 18-20px (SemiBold)
@@ -45,38 +53,50 @@ Use `figma_render_layout` with standard Auto Layout:
 
 ### Step 4: Targeted Mutations (Edit & Change)
 Instead of deleting and re-creating from scratch:
-- Call `figma_update_node` to tweak copy, colors, spacing, corner radius, or layout.
+- Call `figma_update_node` to tweak copy, colors, spacing, corner radius, layout direction, wrap, or padding.
+- Call `figma_set_auto_layout` to instantly turn on Auto Layout or reconfigure alignment and spacing on any frame or selection (equivalent to Shift+A).
 - Call `figma_append_children` to add new elements inside an existing container.
 - Call `figma_delete_nodes` to clean up unwanted layers.
 - Call `figma_duplicate_node` to duplicate/clone existing frames or elements.
 
-### Step 5: Rich Media (Images, SVGs, Videos & GIFs)
-Agents can insert and manipulate visual media with first-class tools:
+### Step 5: Design Systems (Components, Variants & Styles)
+Senior Figma designers build reusable Design Systems, not one-off artboards:
+- **`figma_create_component`**: Turn any layout spec or existing frame into a reusable master Component (`nodeId` or `spec`).
+- **`figma_create_component_set`**: Combine multiple components into a Variant Set with customizable properties (e.g. `Type=Primary/Secondary`, `Size=SM/MD/LG`, `State=Default/Hover/Active`).
+- **`figma_create_instance`**: Instantiate master components with variant property overrides (`variantProperties: { State: 'Hover' }`) and layer text overrides (`textOverrides: { Label: 'Get Started' }`).
+- **`figma_create_style` & `figma_apply_style`**: Create document-level Paint, Text, and Effect styles and bind them to nodes.
+- **`figma_create_variable`**: Create design tokens with mode values (colors, spacing numbers, booleans).
+
+### Step 6: Code Execution Sandbox (`createAutoLayout` Globals)
+When running custom scripts via `figma_execute_code`, a full suite of senior design helpers is in scope:
+- **`createAutoLayout(options)` & `figma.createAutoLayout(options)`**:
+  Natively creates auto layout frames with direction, wrap, gap, counterAxisSpacing, padding, alignment, hug/fill sizing, and children.
+- **`createFrame(options)`**, **`createText(text, options)`**, **`createRectangle(options)`**, **`createEllipse(options)`**, **`createComponent(options)`**, **`createInstance(comp, options)`**.
+- **`solidPaint(hex, opacity)`**, **`rgb(hex)`**, **`rgba(hex, opacity)`**, **`dropShadow(options)`**, **`innerShadow(options)`**, **`blur(radius)`**.
+- **`loadFont(family, style)`**, **`findNode(query)`**, **`findNodes(query)`**.
+
+### Step 7: Rich Media (Images, SVGs, Videos & GIFs)
 - **`figma_insert_media`**:
   - `IMAGE` (PNG, JPEG, WebP): From web URL, local disk path, or base64.
   - `SVG` (Vector icons & illustrations): From raw SVG markup (`<svg>...</svg>`) or file. Parsed directly into native vector layers!
-  - `GIF` (Animated GIFs): Placed into image fills; animates in Figma Prototype/Presentation mode.
+  - `GIF` (Animated GIFs): Placed into image fills; animates in Figma Prototype mode.
   - `VIDEO` (MP4, MOV): Placed into native video fills.
-  - Can be added as a standalone element, appended into any parent frame (`targetParentId`), or used to replace an existing layer's fill (`targetNodeId`).
 - **Declarative Layout Trees (`figma_render_layout`)**:
   - Directly nest `{ type: 'IMAGE', url: 'https://...', width: 320, height: 200, cornerRadius: 8 }`
   - Directly nest `{ type: 'SVG', svg: '<svg>...</svg>', width: 24, height: 24 }`
   - Directly nest `{ type: 'VIDEO', url: 'https://...', width: 480, height: 270 }`
-  The bridge automatically resolves web URLs and disk files into byte buffers before sending them to the Figma canvas.
 
-### Step 6: Document & Frame Export (PDF, PNG, JPG, SVG)
-Agents have full native export capabilities to generate production deliverables:
+### Step 8: Document & Frame Export (PDF, PNG, JPG, SVG)
 - **`figma_export`**:
-  - `PDF`: Exports high-fidelity, vector PDF documents (perfect for pitch decks, proposals, presentation slides, design specs).
+  - `PDF`: Exports high-fidelity, vector PDF documents (pitch decks, presentation slides, design specs).
   - `PNG` & `JPG`: High-resolution raster images with custom retina scale (1x, 2x, 3x, 4x).
   - `SVG`: Vector graphics with path outlines.
-  - **Batch Deck Export**: Pass `exportAllFrames: true` to export every top-level slide/frame on the active page.
-  - **Direct Disk Saving**:
-    - `savePath`: Saves a single PDF/image directly to a local path (e.g. `savePath: "~/Desktop/deck.pdf"`).
-    - `outputDir`: Saves an entire series of slides/frames into a folder with clean numbering (e.g. `outputDir: "~/Desktop/slides/"` -> `01-Cover.pdf`, `02-Summary.pdf`, etc.).
+  - `exportAllFrames: true`: Exports all top-level frames on active page.
+  - `savePath` or `outputDir`: Saves directly to local disk.
 
 ## 2. Anti-Slop Design Principles
 - **No generic purple/pink AI gradients** unless explicitly requested. Use purposeful, high-contrast dark mode (`#0B0F19`, `#1E293B`) or clean light mode (`#FFFFFF`, `#F8FAFC`).
 - **One primary action per view**: Primary buttons must stand out with strong accent color (`#0D99FF`, `#2563EB`). Secondary buttons should be outline or ghost.
-- **Consistent border radii**: Don't mix 4px, 12px, and 30px randomly. Standardize on 6-8px for buttons/inputs, 12-16px for cards/containers.
+- **Consistent border radii**: Standardize on 6-8px for buttons/inputs, 12-16px for cards/containers.
 - **Subtle borders**: Use `#E2E8F0` or `#334155` at 1px weight to define depth without clutter.
+- **Elevation over thick borders**: Use soft drop shadows (`offset: {x: 0, y: 8}, radius: 24, opacity: 0.08`) instead of heavy black borders.

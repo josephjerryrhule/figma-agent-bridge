@@ -49,8 +49,20 @@ export function createMcpServer(wsBridge: WebSocketBridge, configuredAgent?: str
     const { name, arguments: args = {} } = request.params;
 
     try {
+      if (name === 'figma_set_active_file') {
+        const file = (args as { file: string }).file;
+        // Plugins may be connected to a separate bridge daemon on the shared port; forward there if none are local.
+        const selected = wsBridge.isConnected()
+          ? wsBridge.setDefaultClient(file)
+          : await wsBridge.setDefaultClientRemote(file);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(selected, null, 2) }]
+        };
+      }
+
       let command: BridgeCommandType;
-      let payload: any = args;
+      const { file: target, ...payloadWithoutFile } = args as Record<string, any>;
+      let payload: any = payloadWithoutFile;
 
       switch (name) {
         case 'figma_get_status':
@@ -73,6 +85,36 @@ export function createMcpServer(wsBridge: WebSocketBridge, configuredAgent?: str
           break;
         case 'figma_update_node':
           command = 'UPDATE_NODE';
+          break;
+        case 'figma_set_auto_layout':
+          command = 'SET_AUTO_LAYOUT';
+          break;
+        case 'figma_create_component':
+          command = 'CREATE_COMPONENT';
+          break;
+        case 'figma_create_component_set':
+          command = 'CREATE_COMPONENT_SET';
+          break;
+        case 'figma_create_instance':
+          command = 'CREATE_INSTANCE';
+          break;
+        case 'figma_create_style':
+          command = 'CREATE_STYLE';
+          break;
+        case 'figma_apply_style':
+          command = 'APPLY_STYLE';
+          break;
+        case 'figma_get_variables':
+          command = 'GET_VARIABLES';
+          break;
+        case 'figma_create_variable':
+          command = 'CREATE_VARIABLE';
+          break;
+        case 'figma_group_nodes':
+          command = 'GROUP_NODES';
+          break;
+        case 'figma_boolean_operation':
+          command = 'BOOLEAN_OPERATION';
           break;
         case 'figma_append_children':
           command = 'APPEND_CHILDREN';
@@ -98,6 +140,12 @@ export function createMcpServer(wsBridge: WebSocketBridge, configuredAgent?: str
         case 'figma_execute_code':
           command = 'EXECUTE_CODE';
           break;
+        case 'figma_get_speaker_notes':
+          command = 'GET_SPEAKER_NOTES';
+          break;
+        case 'figma_set_speaker_notes':
+          command = 'SET_SPEAKER_NOTES';
+          break;
         case 'figma_get_session_history':
           command = 'GET_SESSION_HISTORY';
           break;
@@ -121,6 +169,8 @@ export function createMcpServer(wsBridge: WebSocketBridge, configuredAgent?: str
         if (payload?.root) {
           payload.root = await resolveLayoutTreeMedia(payload.root);
         }
+      } else if (command === 'CREATE_COMPONENT' && payload?.spec) {
+        payload.spec = await resolveLayoutTreeMedia(payload.spec);
       } else if (command === 'APPEND_CHILDREN' || command === 'REPLACE_CHILDREN') {
         if (Array.isArray(payload?.children)) {
           for (let i = 0; i < payload.children.length; i++) {
@@ -152,7 +202,7 @@ export function createMcpServer(wsBridge: WebSocketBridge, configuredAgent?: str
       }
 
       const timeoutMs = command === 'EXPORT_NODES' || command === 'EXECUTE_CODE' ? 60000 : 25000;
-      const result = await wsBridge.sendCommand(command, payload, timeoutMs, activeAgent);
+      const result = await wsBridge.sendCommand(command, payload, timeoutMs, activeAgent, target);
 
       // Special handling for export: save to disk if requested and return detailed summary
       if (name === 'figma_export') {

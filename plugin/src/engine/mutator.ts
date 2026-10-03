@@ -1,6 +1,8 @@
 /**
  * Mutator Engine for Figma Agent Bridge.
  * Performs targeted updates, property edits, child appending/replacing, and deletions on existing nodes.
+ * Equips senior designers to modify auto layout directions, wrapping, padding, sizing (hug/fill),
+ * elevation effects, min/max constraints, and child layout positioning.
  */
 
 import {
@@ -14,6 +16,7 @@ import {
 } from '../types';
 import { createSolidPaint } from './colors';
 import { ensureFontLoaded } from './fonts';
+import { parseEffects } from './effects';
 import { serializeNode } from './inspector';
 import { createNodeFromLayout } from './parser';
 
@@ -44,7 +47,6 @@ export async function updateNode(payload: UpdateNodePayload): Promise<Serialized
   if (targetNode.type === 'TEXT') {
     const textNode = targetNode as TextNode;
 
-    // Font loading if font or style or characters changing
     const currentFont = (textNode.fontName !== figma.mixed
       ? textNode.fontName
       : { family: 'Inter', style: 'Regular' }) as FontName;
@@ -71,7 +73,19 @@ export async function updateNode(payload: UpdateNodePayload): Promise<Serialized
   }
 
   // Fills & background updates
-  if (payload.imageBase64 && 'fills' in targetNode) {
+  if (payload.videoBase64 && 'fills' in targetNode) {
+    try {
+      const bytes = figma.base64Decode(payload.videoBase64);
+      const video = await figma.createVideoAsync(bytes);
+      (targetNode as any).fills = [{
+        type: 'VIDEO',
+        videoHash: video.hash,
+        scaleMode: payload.videoScaleMode || payload.imageScaleMode || 'FILL'
+      }];
+    } catch (e: any) {
+      console.warn('Failed to update node with video fill:', e);
+    }
+  } else if (payload.imageBase64 && 'fills' in targetNode) {
     try {
       const bytes = figma.base64Decode(payload.imageBase64);
       const image = figma.createImage(bytes);
@@ -119,12 +133,27 @@ export async function updateNode(payload: UpdateNodePayload): Promise<Serialized
     }
   }
 
-  // Auto Layout mutations
-  if (targetNode.type === 'FRAME') {
+  // Auto Layout mutations on Frame or Component
+  if (targetNode.type === 'FRAME' || targetNode.type === 'COMPONENT') {
     const frame = targetNode as FrameNode;
+
+    const layoutMode = payload.layoutMode || payload.layout;
+    if (layoutMode !== undefined) {
+      frame.layoutMode = layoutMode;
+    }
+
+    if (payload.layoutWrap || payload.wrap !== undefined) {
+      const isWrap = payload.layoutWrap === 'WRAP' || payload.wrap === 'WRAP' || payload.wrap === true;
+      if ('layoutWrap' in frame) {
+        frame.layoutWrap = isWrap ? 'WRAP' : 'NO_WRAP';
+      }
+    }
 
     if (payload.gap !== undefined) {
       frame.itemSpacing = payload.gap;
+    }
+    if (payload.counterAxisSpacing !== undefined && 'counterAxisSpacing' in frame) {
+      frame.counterAxisSpacing = payload.counterAxisSpacing;
     }
 
     if (payload.padding !== undefined) {
@@ -133,6 +162,20 @@ export async function updateNode(payload: UpdateNodePayload): Promise<Serialized
         frame.paddingRight = payload.padding;
         frame.paddingBottom = payload.padding;
         frame.paddingLeft = payload.padding;
+      } else if (Array.isArray(payload.padding)) {
+        if (payload.padding.length === 2) {
+          const [v, h] = payload.padding;
+          frame.paddingTop = v;
+          frame.paddingBottom = v;
+          frame.paddingRight = h;
+          frame.paddingLeft = h;
+        } else if (payload.padding.length === 4) {
+          const [t, r, b, l] = payload.padding;
+          frame.paddingTop = t;
+          frame.paddingRight = r;
+          frame.paddingBottom = b;
+          frame.paddingLeft = l;
+        }
       } else {
         if (payload.padding.top !== undefined) frame.paddingTop = payload.padding.top;
         if (payload.padding.right !== undefined) frame.paddingRight = payload.padding.right;
@@ -147,33 +190,67 @@ export async function updateNode(payload: UpdateNodePayload): Promise<Serialized
     if (payload.counterAlignItems) {
       frame.counterAxisAlignItems = payload.counterAlignItems;
     }
-
-    // Sizing
-    if (payload.width === 'HUG') {
-      frame.layoutSizingHorizontal = 'HUG';
-    } else if (payload.width === 'FILL') {
-      frame.layoutSizingHorizontal = 'FILL';
-    } else if (typeof payload.width === 'number') {
-      frame.layoutSizingHorizontal = 'FIXED';
-      frame.resize(payload.width, frame.height);
+    if (payload.counterAxisAlignContent && 'counterAxisAlignContent' in frame) {
+      frame.counterAxisAlignContent = payload.counterAxisAlignContent;
     }
 
-    if (payload.height === 'HUG') {
-      frame.layoutSizingVertical = 'HUG';
-    } else if (payload.height === 'FILL') {
-      frame.layoutSizingVertical = 'FILL';
-    } else if (typeof payload.height === 'number') {
-      frame.layoutSizingVertical = 'FIXED';
-      frame.resize(frame.width, payload.height);
+    if (payload.strokesIncludedInLayout !== undefined && 'strokesIncludedInLayout' in frame) {
+      frame.strokesIncludedInLayout = payload.strokesIncludedInLayout;
     }
-  } else if ('resize' in targetNode) {
-    if (typeof payload.width === 'number' && typeof payload.height === 'number') {
-      (targetNode as any).resize(payload.width, payload.height);
-    } else if (typeof payload.width === 'number') {
-      (targetNode as any).resize(payload.width, (targetNode as any).height);
-    } else if (typeof payload.height === 'number') {
-      (targetNode as any).resize((targetNode as any).width, payload.height);
+    if (payload.itemReverseZIndex !== undefined && 'itemReverseZIndex' in frame) {
+      frame.itemReverseZIndex = payload.itemReverseZIndex;
     }
+  }
+
+  // Child positioning inside Auto Layout
+  if (payload.layoutPositioning && 'layoutPositioning' in targetNode) {
+    (targetNode as any).layoutPositioning = payload.layoutPositioning;
+  }
+  if (payload.layoutGrow !== undefined && 'layoutGrow' in targetNode) {
+    (targetNode as any).layoutGrow = payload.layoutGrow;
+  }
+  if (payload.layoutAlign && 'layoutAlign' in targetNode) {
+    (targetNode as any).layoutAlign = payload.layoutAlign;
+  }
+
+  // Sizing (HUG / FILL / FIXED) for any node supporting it
+  const targetW = payload.layoutSizingHorizontal || payload.width;
+  if (targetW === 'HUG' && 'layoutSizingHorizontal' in targetNode) {
+    (targetNode as any).layoutSizingHorizontal = 'HUG';
+  } else if (targetW === 'FILL' && 'layoutSizingHorizontal' in targetNode) {
+    (targetNode as any).layoutSizingHorizontal = 'FILL';
+  } else if (typeof targetW === 'number') {
+    if ('layoutSizingHorizontal' in targetNode) {
+      (targetNode as any).layoutSizingHorizontal = 'FIXED';
+    }
+    if ('resize' in targetNode) {
+      (targetNode as any).resize(targetW, (targetNode as any).height);
+    }
+  }
+
+  const targetH = payload.layoutSizingVertical || payload.height;
+  if (targetH === 'HUG' && 'layoutSizingVertical' in targetNode) {
+    (targetNode as any).layoutSizingVertical = 'HUG';
+  } else if (targetH === 'FILL' && 'layoutSizingVertical' in targetNode) {
+    (targetNode as any).layoutSizingVertical = 'FILL';
+  } else if (typeof targetH === 'number') {
+    if ('layoutSizingVertical' in targetNode) {
+      (targetNode as any).layoutSizingVertical = 'FIXED';
+    }
+    if ('resize' in targetNode) {
+      (targetNode as any).resize((targetNode as any).width, targetH);
+    }
+  }
+
+  // Min / Max constraints
+  if (payload.minWidth !== undefined && 'minWidth' in targetNode) (targetNode as any).minWidth = payload.minWidth;
+  if (payload.maxWidth !== undefined && 'maxWidth' in targetNode) (targetNode as any).maxWidth = payload.maxWidth;
+  if (payload.minHeight !== undefined && 'minHeight' in targetNode) (targetNode as any).minHeight = payload.minHeight;
+  if (payload.maxHeight !== undefined && 'maxHeight' in targetNode) (targetNode as any).maxHeight = payload.maxHeight;
+
+  // Effects (Elevation shadows & blurs)
+  if (payload.effects && 'effects' in targetNode) {
+    (targetNode as any).effects = parseEffects(payload.effects);
   }
 
   // Position

@@ -167,5 +167,9 @@ export async function resolveUpdateNodeMedia(payload: UpdateNodePayload): Promis
     const resolved = await resolveMediaSource(clone.imageUrl, 'IMAGE');
     clone.imageBase64 = resolved.base64;
   }
+  if (clone.videoUrl && !clone.videoBase64) {
+    const resolved = await resolveMediaSource(clone.videoUrl, 'VIDEO');
+    clone.videoBase64 = resolved.base64;
+  }
   return clone;
 }

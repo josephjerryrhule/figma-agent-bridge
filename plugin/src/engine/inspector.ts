@@ -1,9 +1,12 @@
 /**
  * Inspector & Reader Engine for Figma Agent Bridge.
  * Serializes nodes, canvas selection, pages, and design tokens into clean JSON for LLMs.
+ * Captures Auto Layout v4 (wrap, cross-axis spacing), child layout sizing (hug/fill/grow/align),
+ * absolute positioning, elevation effects, and style IDs.
  */
 
 import { figmaRgbToHex } from './colors';
+import { serializeEffects } from './effects';
 import { SerializedNodeInfo, DocumentInfoResult, FindNodesPayload } from '../types';
 
 /**
@@ -66,19 +69,81 @@ export function serializeNode(node: BaseNode, currentDepth = 0, maxDepth = 4): S
     result.cornerRadius = node.cornerRadius;
   }
 
-  // Auto Layout & Children
+  // Auto Layout on container
   if ('layoutMode' in node) {
     const frame = node as FrameNode;
     result.layoutMode = frame.layoutMode;
+    if ('layoutWrap' in frame) {
+      result.layoutWrap = frame.layoutWrap;
+    }
     result.itemSpacing = frame.itemSpacing;
+    if ('counterAxisSpacing' in frame && frame.counterAxisSpacing !== null) {
+      result.counterAxisSpacing = frame.counterAxisSpacing;
+    }
     result.paddingTop = frame.paddingTop;
     result.paddingRight = frame.paddingRight;
     result.paddingBottom = frame.paddingBottom;
     result.paddingLeft = frame.paddingLeft;
     result.primaryAxisAlignItems = frame.primaryAxisAlignItems;
     result.counterAxisAlignItems = frame.counterAxisAlignItems;
+    if ('counterAxisAlignContent' in frame) {
+      result.counterAxisAlignContent = frame.counterAxisAlignContent;
+    }
     result.layoutSizingHorizontal = frame.layoutSizingHorizontal;
     result.layoutSizingVertical = frame.layoutSizingVertical;
+    if ('strokesIncludedInLayout' in frame) {
+      result.strokesIncludedInLayout = frame.strokesIncludedInLayout;
+    }
+    if ('itemReverseZIndex' in frame) {
+      result.itemReverseZIndex = frame.itemReverseZIndex;
+    }
+  }
+
+  // Child layout positioning and sizing relative to parent
+  if ('layoutPositioning' in node) {
+    result.layoutPositioning = (node as any).layoutPositioning;
+  }
+  if ('layoutGrow' in node) {
+    result.layoutGrow = (node as any).layoutGrow;
+  }
+  if ('layoutAlign' in node) {
+    result.layoutAlign = (node as any).layoutAlign;
+  }
+  if ('layoutSizingHorizontal' in node && !('layoutMode' in node)) {
+    result.layoutSizingHorizontal = (node as any).layoutSizingHorizontal;
+  }
+  if ('layoutSizingVertical' in node && !('layoutMode' in node)) {
+    result.layoutSizingVertical = (node as any).layoutSizingVertical;
+  }
+
+  // Min / Max constraints
+  if ('minWidth' in node && (node as any).minWidth !== null) result.minWidth = (node as any).minWidth;
+  if ('maxWidth' in node && (node as any).maxWidth !== null) result.maxWidth = (node as any).maxWidth;
+  if ('minHeight' in node && (node as any).minHeight !== null) result.minHeight = (node as any).minHeight;
+  if ('maxHeight' in node && (node as any).maxHeight !== null) result.maxHeight = (node as any).maxHeight;
+
+  // Elevation Effects (Shadows & Blurs)
+  if ('effects' in node && Array.isArray((node as any).effects) && (node as any).effects.length > 0) {
+    result.effects = serializeEffects((node as any).effects);
+  }
+
+  // Bound Style IDs
+  if ('fillStyleId' in node && (node as any).fillStyleId) result.fillStyleId = (node as any).fillStyleId as string;
+  if ('strokeStyleId' in node && (node as any).strokeStyleId) result.strokeStyleId = (node as any).strokeStyleId as string;
+  if ('textStyleId' in node && (node as any).textStyleId) result.textStyleId = (node as any).textStyleId as string;
+  if ('effectStyleId' in node && (node as any).effectStyleId) result.effectStyleId = (node as any).effectStyleId as string;
+
+  // Component & Variant information
+  if (node.type === 'COMPONENT_SET') {
+    const compSet = node as ComponentSetNode;
+    if ('componentPropertyDefinitions' in compSet) {
+      result.componentPropertyDefinitions = compSet.componentPropertyDefinitions;
+    }
+  } else if (node.type === 'INSTANCE') {
+    const instance = node as InstanceNode;
+    if ('variantProperties' in instance) {
+      result.variantProperties = instance.variantProperties || undefined;
+    }
   }
 
   // Recursive children serialization
@@ -181,32 +246,44 @@ export function getDocumentInfo(): DocumentInfoResult {
     return {
       id: style.id,
       name: style.name,
-      colorHex: solid ? figmaRgbToHex(solid.color) : 'none'
+      colorHex: solid ? figmaRgbToHex(solid.color) : '#000000'
     };
   });
 
   const localTextStyles = figma.getLocalTextStyles().map(style => ({
     id: style.id,
     name: style.name,
-    fontSize: style.fontSize,
+    fontSize: typeof style.fontSize === 'number' ? style.fontSize : 14,
     fontName: style.fontName
   }));
 
+  const localEffectStyles = figma.getLocalEffectStyles().map(style => ({
+    id: style.id,
+    name: style.name,
+    type: style.effects[0]?.type || 'EFFECT'
+  }));
+
   const topLevelFrames = figma.currentPage.children
-    .filter(child => child.type === 'FRAME')
-    .map(frame => ({
-      id: frame.id,
-      name: frame.name,
-      width: Math.round(frame.width),
-      height: Math.round(frame.height)
+    .filter(node => node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'COMPONENT_SET')
+    .map(node => ({
+      id: node.id,
+      name: node.name,
+      width: Math.round(node.width),
+      height: Math.round(node.height)
     }));
+
+  const pages = figma.root.children.map(page => ({
+    id: page.id,
+    name: page.name
+  }));
 
   return {
     fileName: figma.root.name,
     currentPageName: figma.currentPage.name,
-    pages: figma.root.children.map(p => ({ id: p.id, name: p.name })),
+    pages,
     localColorStyles,
     localTextStyles,
+    localEffectStyles,
     topLevelFrames
   };
 }
