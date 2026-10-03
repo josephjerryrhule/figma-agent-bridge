@@ -1,13 +1,30 @@
 /**
  * Main Figma Plugin Sandbox Thread.
  * Runs inside Figma's sandboxed JavaScript runtime with direct access to the Figma Document Object Model.
+ * Equips AI agents with full Senior Figma User capabilities:
+ * Auto Layout (wrap, gap, padding, hug/fill), Master Components, Variants, Instances,
+ * Styles, Variables (Design Tokens), Groups, Booleans, and global sandbox helpers.
  */
 
-import { BridgeRequest, BridgeResponse } from './types';
+import { BridgeRequest, BridgeResponse, PluginConnectionInfo } from './types';
 import { getSelection, inspectNode, findNodes, getDocumentInfo, serializeNode } from './engine/inspector';
 import { renderLayout } from './engine/parser';
 import { updateNode, appendChildren, replaceChildren, deleteNodes, duplicateNode, insertMedia } from './engine/mutator';
 import { captureScreenshot, exportNodes } from './engine/export';
+import {
+  setAutoLayout,
+  createComponent,
+  createComponentSet,
+  createInstance,
+  createStyle,
+  applyStyle,
+  getVariables,
+  createVariable,
+  groupNodes,
+  booleanOperation
+} from './engine/design-system';
+import { getSandboxHelpers, createFigmaSandboxProxy } from './engine/sandbox-helpers';
+import { getSpeakerNotes, setSpeakerNotes } from './engine/slides';
 
 // Show compact sidebar UI
 figma.showUI(__html__, {
@@ -17,14 +34,28 @@ figma.showUI(__html__, {
   themeColors: true
 });
 
+const pluginInstanceId = `plugin_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+const getPluginInfo = (): PluginConnectionInfo => ({
+  fileName: figma.root.name,
+  fileKey: figma.fileKey ?? null,
+  editorType: figma.editorType,
+  pageName: figma.currentPage.name,
+  instanceId: pluginInstanceId
+});
+const postPluginInfo = () => figma.ui.postMessage({ type: 'PLUGIN_INFO', ...getPluginInfo() });
+
 // Track session history for agent context
 const sessionTouchedNodeIds = new Set<string>();
 
 /**
  * Main message handler receiving commands forwarded by the UI iframe WebSocket client.
  */
-figma.ui.onmessage = async (msg: BridgeRequest) => {
-  if (!msg || !msg.command) return;
+figma.ui.onmessage = async (msg: BridgeRequest | { type?: string }) => {
+  if ((msg as { type?: string })?.type === 'UI_READY') {
+    postPluginInfo();
+    return;
+  }
+  if (!msg || !('command' in msg) || !msg.command) return;
 
   const startTime = Date.now();
   const response: BridgeResponse = {
@@ -89,6 +120,70 @@ figma.ui.onmessage = async (msg: BridgeRequest) => {
         break;
       }
 
+      case 'SET_AUTO_LAYOUT': {
+        const result = await setAutoLayout(msg.payload || {});
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'CREATE_COMPONENT': {
+        const result = await createComponent(msg.payload || {});
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'CREATE_COMPONENT_SET': {
+        const result = await createComponentSet(msg.payload || {});
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'CREATE_INSTANCE': {
+        const result = await createInstance(msg.payload);
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'CREATE_STYLE': {
+        response.data = await createStyle(msg.payload);
+        break;
+      }
+
+      case 'APPLY_STYLE': {
+        const result = await applyStyle(msg.payload);
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'GET_VARIABLES': {
+        response.data = getVariables(msg.payload);
+        break;
+      }
+
+      case 'CREATE_VARIABLE': {
+        response.data = createVariable(msg.payload);
+        break;
+      }
+
+      case 'GROUP_NODES': {
+        const result = groupNodes(msg.payload);
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
+      case 'BOOLEAN_OPERATION': {
+        const result = booleanOperation(msg.payload);
+        sessionTouchedNodeIds.add(result.id);
+        response.data = result;
+        break;
+      }
+
       case 'APPEND_CHILDREN': {
         const result = await appendChildren(msg.payload);
         sessionTouchedNodeIds.add(result.id);
@@ -136,14 +231,69 @@ figma.ui.onmessage = async (msg: BridgeRequest) => {
         break;
       }
 
+      case 'GET_SPEAKER_NOTES': {
+        response.data = getSpeakerNotes(msg.payload || {});
+        break;
+      }
+
+      case 'SET_SPEAKER_NOTES': {
+        const result = setSpeakerNotes(msg.payload);
+        for (const id of result.updatedIds) sessionTouchedNodeIds.add(id);
+        response.data = result;
+        break;
+      }
+
       case 'EXECUTE_CODE': {
         const rawCode = msg.payload?.code;
         if (!rawCode) throw new Error('No code provided in EXECUTE_CODE payload');
 
-        // Safe evaluation inside plugin sandbox with figma in scope
+        // Safe evaluation inside plugin sandbox with figma and rich senior-designer helpers in scope
         const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-        const fn = new AsyncFunction('figma', rawCode);
-        const evalResult = await fn(figma);
+        const helpers = getSandboxHelpers();
+        const fn = new AsyncFunction(
+          'figma',
+          'createAutoLayout',
+          'createFrame',
+          'createTextNode',
+          'createText',
+          'createRectangle',
+          'createEllipse',
+          'createComponent',
+          'createInstance',
+          'loadFont',
+          'solidPaint',
+          'rgb',
+          'rgba',
+          'dropShadow',
+          'innerShadow',
+          'blur',
+          'findNode',
+          'findNodes',
+          rawCode
+        );
+
+        const figmaProxy = createFigmaSandboxProxy(figma, helpers);
+
+        const evalResult = await fn(
+          figmaProxy,
+          helpers.createAutoLayout,
+          helpers.createFrame,
+          helpers.createTextNode,
+          helpers.createText,
+          helpers.createRectangle,
+          helpers.createEllipse,
+          helpers.createComponent,
+          helpers.createInstance,
+          helpers.loadFont,
+          helpers.solidPaint,
+          helpers.rgb,
+          helpers.rgba,
+          helpers.dropShadow,
+          helpers.innerShadow,
+          helpers.blur,
+          helpers.findNode,
+          helpers.findNodes
+        );
 
         // If returned node, serialize it
         if (evalResult && typeof evalResult === 'object' && 'id' in evalResult) {
@@ -195,3 +345,5 @@ figma.ui.onmessage = async (msg: BridgeRequest) => {
     figma.ui.postMessage(response);
   }
 };
+
+figma.on('currentpagechange', postPluginInfo);

@@ -187,19 +187,29 @@ In Cursor: **Settings > Features > MCP > Add New MCP Server**:
 | :--- | :--- | :--- |
 | **`figma_get_status`** | `{}` | Checks if the Figma plugin is connected, returning active file name and page. |
 | **`figma_get_selection`** | `{ depth?: number }` | Retrieves currently selected canvas nodes, layout styles, and dimensions. |
-| **`figma_inspect_node`** | `{ id?: string, name?: string, depth?: number }` | Deeply inspects a node by ID or name with padding, typography, fills, and children. |
+| **`figma_inspect_node`** | `{ id?: string, name?: string, depth?: number }` | Deeply inspects a node by ID or name with padding, typography, fills, effects, and children. |
 | **`figma_find_nodes`** | `{ query?: string, name?: string, type?: string, limit?: number }` | Searches the active page for nodes matching names, types (`FRAME`, `TEXT`), or text. |
-| **`figma_get_document_info`**| `{}` | Extracts all pages, local color styles, typography tokens, and top-level frames. |
-| **`figma_render_layout`** | `{ root: LayoutNode, insertPosition?: {x, y} }` | Generates declarative Auto Layout trees (frames, text, shapes, images, SVGs). |
+| **`figma_get_document_info`**| `{}` | Extracts all pages, local color styles, typography tokens, effect styles, and top-level frames. |
+| **`figma_render_layout`** | `{ root: LayoutNode, insertPosition?: {x, y} }` | Generates declarative Auto Layout trees (frames, wrap, hug/fill, text, shapes, media, shadows). |
+| **`figma_set_auto_layout`**| `{ nodeId?, layoutMode?, layoutWrap?, gap?, counterAxisSpacing?, padding?, alignItems?, width?, height? }` | Enables or configures Auto Layout on any frame or selection (equivalent to **Shift+A**). |
+| **`figma_update_node`** | `{ id, text?, color?, background?, layout?, layoutWrap?, gap?, padding?, effects?, minWidth?, maxWidth? }` | In-place property mutations without re-rendering parent structures. |
+| **`figma_create_component`**| `{ nodeId?, spec?: LayoutNode, name?, description? }` | Creates a reusable master Component from a layout tree or converts an existing Frame. |
+| **`figma_create_component_set`**| `{ componentIds: string[], name?, description? }` | Combines multiple master Components into a Variant Set (`State=Default/Hover`, etc.). |
+| **`figma_create_instance`**| `{ componentId, name?, x?, y?, variantProperties?, textOverrides?, width?, height? }` | Creates an instance of a Component with variant property and text overrides. |
+| **`figma_create_style`** | `{ styleType: 'PAINT'\|'TEXT'\|'EFFECT', name, color?, fontFamily?, fontSize?, effects? }` | Creates a document-level Paint, Typography, or Elevation/Shadow style. |
+| **`figma_apply_style`** | `{ nodeId, styleType: 'FILL'\|'STROKE'\|'TEXT'\|'EFFECT', styleId?, styleName? }` | Binds a design system style to an existing node. |
+| **`figma_get_variables`** | `{ collectionId? }` | Retrieves Figma Variables and Design Tokens across all collections and modes. |
+| **`figma_create_variable`**| `{ collectionName?, name, resolvedType, value, modeName? }` | Creates a Figma Variable (Design Token) with values for modes (COLOR, FLOAT, etc.). |
+| **`figma_group_nodes`** | `{ nodeIds: string[], name? }` | Groups multiple nodes on the canvas into a single Group container. |
+| **`figma_boolean_operation`**| `{ operation: 'UNION'\|'SUBTRACT'\|'INTERSECT'\|'EXCLUDE', nodeIds: string[], name? }` | Performs a vector Boolean operation on 2 or more shape layers. |
 | **`figma_insert_media`** | `{ mediaType, source, name?, width?, height?, scaleMode?, targetParentId?, targetNodeId? }` | Inserts images (`PNG/JPEG/WebP`), vector `SVG`s, `GIF`s, or `VIDEO`s from URLs, paths, or base64. |
 | **`figma_export`** | `{ format, nodeId?, nodeIds?, exportAllFrames?, scale?, savePath?, outputDir? }` | Exports vector **PDF**s, pitch decks, retina **PNG**s, **JPG**s, or **SVG**s directly to disk. |
 | **`figma_capture_screenshot`**| `{ nodeId?, format?, scale?, savePath? }` | Captures high-res visual screenshot for multimodal AI inspection. |
-| **`figma_update_node`** | `{ id, text?, color?, background?, gap?, padding?, cornerRadius?, imageUrl? }` | In-place property mutations without re-rendering parent structures. |
 | **`figma_duplicate_node`** | `{ nodeId, name?, x?, y?, insertAfter? }` | Clones any canvas frame, component, or element with optional offsets. |
 | **`figma_append_children`** | `{ parentId, children: LayoutNode[] }` | Appends new child elements inside an existing container. |
 | **`figma_replace_children`**| `{ parentId, children: LayoutNode[] }` | Clears and replaces all children inside a frame. |
 | **`figma_delete_nodes`** | `{ ids: string[] }` | Deletes one or more nodes by their IDs. |
-| **`figma_execute_code`** | `{ code: string }` | Evaluates arbitrary JavaScript in the Figma plugin sandbox with direct `figma.*` access. |
+| **`figma_execute_code`** | `{ code: string }` | Evaluates arbitrary JavaScript in sandbox with `figma`, `createAutoLayout`, `createText`, `createFrame`, `solidPaint`, `dropShadow` in scope. |
 | **`figma_get_session_history`**| `{}` | Returns all nodes modified by the AI during the active session. |
 | **`figma_undo`** | `{}` | Reverts the last canvas action. |
 | **`figma_redo`** | `{}` | Re-applies the most recently undone action. |
@@ -284,6 +294,16 @@ Figma Agent Bridge is explicitly engineered against generic "AI slop" designs:
 - ✅ **Strict spacing scales**: Consistent 4px / 8px / 16px / 24px / 32px rhythms.
 - ✅ **Purposeful accents**: High-contrast monochrome palettes with single-point accent colors.
 - ✅ **Native Auto Layout**: Every element is properly wrapped in Auto Layout containers with hug/fill constraints ready for developer handoff.
+
+---
+
+## Multiple Figma files
+
+You can keep the bridge plugin open in several Figma Design or Figma Slides files at once. Every MCP tool accepts an optional `file` parameter: use a full or partial file name, a `fileKey`, or the client ID reported by `figma_get_status`. Without it, commands go to the most recently connected file.
+
+`figma_get_status` includes the connected files and identifies the default. Use `figma_set_active_file` with `{ "file": "Pitch Deck" }` to change that default for later commands.
+
+For REST clients, choose a file with the `X-Figma-File` header, `?file=...`, or a request body's `file` property (the header takes precedence and the field is not forwarded to Figma). `GET /v1/files` lists connected files; `POST /v1/files/active` with `{ "file": "Pitch Deck" }` sets the default.
 
 ---
 

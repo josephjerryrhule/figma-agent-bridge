@@ -404,6 +404,8 @@
     const WS_URL = 'ws://127.0.0.1:3055';
     let socket = null;
     let reconnectTimeout = null;
+    let pluginInfo = null;
+    let bridgeStarted = false;
     let commandCount = 0;
     let idleTimer = null;
 
@@ -540,6 +542,7 @@
           addLog('System', 'BRIDGE', 'Connected to local relay');
           
           socket.send(JSON.stringify({
+            ...pluginInfo,
             type: 'PLUGIN_CONNECTED',
             timestamp: Date.now()
           }));
@@ -593,6 +596,17 @@
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
+      if (msg.type === 'PLUGIN_INFO') {
+        pluginInfo = msg;
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'PLUGIN_INFO', ...pluginInfo }));
+        } else if (!bridgeStarted) {
+          bridgeStarted = true;
+          connectWebSocket();
+        }
+        return;
+      }
+
       const agent = msg.agent || activeAgentCategory || 'Agent';
       const cmd = msg.command || 'DONE';
 
@@ -632,7 +646,7 @@
       connectWebSocket();
     };
 
-    connectWebSocket();
+    parent.postMessage({ pluginMessage: { type: 'UI_READY' } }, '*');
   </script>
 </body>
 </html>

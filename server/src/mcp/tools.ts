@@ -1,9 +1,27 @@
 /**
  * MCP Tools Definitions.
  * Exposes the full design suite to AGY, Claude Code, Codex, and Cursor using Zod schemas.
+ * Equips AI agents with Senior Figma Designer capabilities:
+ * - Auto Layout v4 (Direction, Wrap, Cross-axis gap, Hug/Fill, Min/Max dimensions, Canvas stacking, Strokes in layout)
+ * - Absolute positioning inside Auto Layout containers
+ * - Master Components, Variants & Component Sets
+ * - Component Instances with variant property and text overrides
+ * - Design Tokens & Styles (Paint, Typography, Elevation/Shadow/Blur Effects)
+ * - Figma Variables (Token collections and modes)
+ * - Grouping and Vector Boolean operations
  */
 
 import { z } from 'zod';
+
+export const EffectSchema = z.object({
+  type: z.enum(['DROP_SHADOW', 'INNER_SHADOW', 'LAYER_BLUR', 'BACKGROUND_BLUR']).describe('Type of visual effect'),
+  color: z.string().optional().describe('Color in hex format (e.g. #000000) or rgba'),
+  opacity: z.number().min(0).max(1).optional().describe('Opacity from 0.0 to 1.0'),
+  offset: z.object({ x: z.number(), y: z.number() }).optional().describe('Offset {x, y} in pixels'),
+  radius: z.number().optional().describe('Blur radius in pixels'),
+  spread: z.number().optional().describe('Shadow spread in pixels (for shadows)'),
+  visible: z.boolean().optional().describe('Whether effect is visible (default true)')
+});
 
 export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.discriminatedUnion('type', [
@@ -12,12 +30,18 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       type: z.literal('FRAME'),
       name: z.string().optional().describe('Name of the frame layer'),
       layout: z.enum(['HORIZONTAL', 'VERTICAL', 'NONE']).optional().describe('Auto Layout direction'),
+      layoutMode: z.enum(['HORIZONTAL', 'VERTICAL', 'NONE']).optional().describe('Alias for layout'),
+      layoutWrap: z.enum(['NO_WRAP', 'WRAP']).optional().describe('Wrap child items onto multiple rows/columns'),
       width: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional().describe('Width in px, or HUG, or FILL'),
       height: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional().describe('Height in px, or HUG, or FILL'),
       gap: z.number().optional().describe('Spacing between child items in px'),
+      itemSpacing: z.number().optional().describe('Alias for gap'),
+      counterAxisSpacing: z.number().optional().describe('Spacing between wrapped rows/columns in px'),
       padding: z
         .union([
           z.number(),
+          z.tuple([z.number(), z.number()]),
+          z.tuple([z.number(), z.number(), z.number(), z.number()]),
           z.object({
             top: z.number().optional(),
             right: z.number().optional(),
@@ -26,10 +50,20 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
           })
         ])
         .optional()
-        .describe('Internal padding in px'),
+        .describe('Internal padding in px (number, [v, h], [t, r, b, l], or object)'),
+      paddingTop: z.number().optional(),
+      paddingRight: z.number().optional(),
+      paddingBottom: z.number().optional(),
+      paddingLeft: z.number().optional(),
+      paddingHorizontal: z.number().optional(),
+      paddingVertical: z.number().optional(),
       alignItems: z.enum(['MIN', 'CENTER', 'MAX', 'SPACE_BETWEEN']).optional().describe('Primary axis alignment'),
+      primaryAxisAlignItems: z.enum(['MIN', 'CENTER', 'MAX', 'SPACE_BETWEEN']).optional(),
       counterAlignItems: z.enum(['MIN', 'CENTER', 'MAX', 'BASELINE']).optional().describe('Cross axis alignment'),
+      counterAxisAlignItems: z.enum(['MIN', 'CENTER', 'MAX', 'BASELINE']).optional(),
+      counterAxisAlignContent: z.enum(['AUTO', 'SPACE_BETWEEN']).optional().describe('Align wrapped rows/lines'),
       background: z.string().optional().describe('Background color hex (e.g. #FFFFFF, #1E293B)'),
+      fill: z.string().optional().describe('Alias for background'),
       opacity: z.number().min(0).max(1).optional().describe('Opacity from 0.0 to 1.0'),
       cornerRadius: z
         .union([z.number(), z.tuple([z.number(), z.number(), z.number(), z.number()])])
@@ -43,6 +77,16 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
         })
         .optional(),
       clipsContent: z.boolean().optional(),
+      strokesIncludedInLayout: z.boolean().optional().describe('Include stroke borders in Auto Layout bounding box'),
+      itemReverseZIndex: z.boolean().optional().describe('Reverse canvas stacking order (first on top vs last on top)'),
+      minWidth: z.number().optional().describe('Minimum width constraint in px'),
+      maxWidth: z.number().optional().describe('Maximum width constraint in px'),
+      minHeight: z.number().optional().describe('Minimum height constraint in px'),
+      maxHeight: z.number().optional().describe('Maximum height constraint in px'),
+      effects: z.array(EffectSchema).optional().describe('Elevation effects: Drop shadows, inner shadows, blurs'),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional().describe('Set to ABSOLUTE for floating badges/icons inside Auto Layout'),
+      layoutGrow: z.number().optional().describe('Flex grow in Auto Layout (0 or 1)'),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional().describe('Cross-axis alignment on child item'),
       x: z.number().optional(),
       y: z.number().optional(),
       children: z.array(LayoutNodeSchema).optional().describe('Nested child elements')
@@ -62,7 +106,17 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       letterSpacing: z.number().optional(),
       lineHeight: z.union([z.number(), z.literal('AUTO')]).optional(),
       width: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional(),
-      height: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional()
+      height: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional(),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional(),
+      layoutGrow: z.number().optional(),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional(),
+      minWidth: z.number().optional(),
+      maxWidth: z.number().optional(),
+      minHeight: z.number().optional(),
+      maxHeight: z.number().optional(),
+      effects: z.array(EffectSchema).optional(),
+      x: z.number().optional(),
+      y: z.number().optional()
     }),
 
     // RECTANGLE
@@ -73,8 +127,18 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       height: z.number().describe('Height in px'),
       fill: z.string().optional().describe('Fill color hex (e.g. #E2E8F0)'),
       opacity: z.number().min(0).max(1).optional(),
-      cornerRadius: z.number().optional(),
-      stroke: z.object({ color: z.string(), weight: z.number().optional() }).optional()
+      cornerRadius: z.union([z.number(), z.tuple([z.number(), z.number(), z.number(), z.number()])]).optional(),
+      stroke: z.object({ color: z.string(), weight: z.number().optional() }).optional(),
+      effects: z.array(EffectSchema).optional(),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional(),
+      layoutGrow: z.number().optional(),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional(),
+      minWidth: z.number().optional(),
+      maxWidth: z.number().optional(),
+      minHeight: z.number().optional(),
+      maxHeight: z.number().optional(),
+      x: z.number().optional(),
+      y: z.number().optional()
     }),
 
     // ELLIPSE
@@ -85,7 +149,13 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       height: z.number().describe('Height in px'),
       fill: z.string().optional().describe('Fill color hex'),
       opacity: z.number().min(0).max(1).optional(),
-      stroke: z.object({ color: z.string(), weight: z.number().optional() }).optional()
+      stroke: z.object({ color: z.string(), weight: z.number().optional() }).optional(),
+      effects: z.array(EffectSchema).optional(),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional(),
+      layoutGrow: z.number().optional(),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional(),
+      x: z.number().optional(),
+      y: z.number().optional()
     }),
 
     // IMAGE
@@ -99,7 +169,17 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       scaleMode: z.enum(['FILL', 'FIT', 'CROP', 'TILE']).optional().default('FILL'),
       cornerRadius: z.union([z.number(), z.array(z.number())]).optional(),
       stroke: z.object({ color: z.string(), weight: z.number().optional() }).optional(),
-      opacity: z.number().min(0).max(1).optional()
+      effects: z.array(EffectSchema).optional(),
+      opacity: z.number().min(0).max(1).optional(),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional(),
+      layoutGrow: z.number().optional(),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional(),
+      minWidth: z.number().optional(),
+      maxWidth: z.number().optional(),
+      minHeight: z.number().optional(),
+      maxHeight: z.number().optional(),
+      x: z.number().optional(),
+      y: z.number().optional()
     }),
 
     // SVG
@@ -110,7 +190,12 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       url: z.string().optional().describe('URL or file path to .svg file'),
       width: z.number().optional().describe('Width in px'),
       height: z.number().optional().describe('Height in px'),
-      opacity: z.number().min(0).max(1).optional()
+      opacity: z.number().min(0).max(1).optional(),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional(),
+      layoutGrow: z.number().optional(),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional(),
+      x: z.number().optional(),
+      y: z.number().optional()
     }),
 
     // VIDEO
@@ -123,12 +208,18 @@ export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
       height: z.number().optional().describe('Height in px'),
       scaleMode: z.enum(['FILL', 'FIT', 'CROP']).optional().default('FILL'),
       cornerRadius: z.union([z.number(), z.array(z.number())]).optional(),
-      opacity: z.number().min(0).max(1).optional()
+      effects: z.array(EffectSchema).optional(),
+      opacity: z.number().min(0).max(1).optional(),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional(),
+      layoutGrow: z.number().optional(),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional(),
+      x: z.number().optional(),
+      y: z.number().optional()
     })
   ])
 );
 
-export const toolsDefinitions = [
+const baseToolDefinitions = [
   {
     name: 'figma_get_status',
     description: 'Checks if the Figma desktop/web plugin is actively connected, along with current file name and page.',
@@ -143,7 +234,7 @@ export const toolsDefinitions = [
   },
   {
     name: 'figma_inspect_node',
-    description: 'Inspects a specific node by its ID or name, returning full details on layout, padding, gap, typography, and fills.',
+    description: 'Inspects a specific node by its ID or name, returning full details on layout, padding, gap, typography, fills, effects, and bound styles.',
     inputSchema: z.object({
       id: z.string().optional().describe('Figma Node ID (e.g. "12:34")'),
       name: z.string().optional().describe('Layer name to match if ID is unknown'),
@@ -152,7 +243,7 @@ export const toolsDefinitions = [
   },
   {
     name: 'figma_find_nodes',
-    description: 'Searches the current page for nodes matching name, type (FRAME, TEXT, RECTANGLE, etc.), or text content.',
+    description: 'Searches the current page for nodes matching name, type (FRAME, TEXT, RECTANGLE, COMPONENT, etc.), or text content.',
     inputSchema: z.object({
       query: z.string().optional().describe('General search term to match against layer names and text'),
       name: z.string().optional().describe('Match layer name'),
@@ -163,12 +254,12 @@ export const toolsDefinitions = [
   },
   {
     name: 'figma_get_document_info',
-    description: 'Extracts document pages, local color styles, typography tokens, and top-level frames.',
+    description: 'Extracts document pages, local color styles, typography tokens, effect styles, and top-level frames.',
     inputSchema: z.object({})
   },
   {
     name: 'figma_render_layout',
-    description: 'Creates native Figma designs using a declarative flexbox/Auto Layout JSON tree. Supports nested containers, auto-fonts, responsive sizing, and tokens.',
+    description: 'Creates native Figma designs using a declarative flexbox/Auto Layout JSON tree. Supports nested containers, wrapping, responsive hug/fill sizing, absolute positioning, elevation shadows, and tokens.',
     inputSchema: z.object({
       root: LayoutNodeSchema.describe('Root node specification'),
       insertPosition: z
@@ -184,10 +275,10 @@ export const toolsDefinitions = [
   },
   {
     name: 'figma_update_node',
-    description: 'Edits and modifies properties of an existing node by ID or name (change text copy, colors, auto-layout, sizing, corner radius, padding).',
+    description: 'Edits and modifies properties of an existing node by ID or name (change text copy, colors, auto-layout direction/wrap/padding, sizing hug/fill, corner radius, elevation effects, min/max constraints).',
     inputSchema: z.object({
-      id: z.string().describe('Target node ID'),
-      name: z.string().optional().describe('Rename the node'),
+      id: z.string().optional().describe('Target node ID'),
+      name: z.string().optional().describe('Rename the node or match by layer name if ID is omitted'),
       text: z.string().optional().describe('Update text characters (if TEXT node)'),
       fontFamily: z.string().optional(),
       fontWeight: z.enum(['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black']).optional(),
@@ -197,16 +288,161 @@ export const toolsDefinitions = [
       opacity: z.number().min(0).max(1).optional(),
       cornerRadius: z.union([z.number(), z.tuple([z.number(), z.number(), z.number(), z.number()])]).optional(),
       stroke: z.object({ color: z.string(), weight: z.number().optional(), align: z.enum(['INSIDE', 'OUTSIDE', 'CENTER']).optional() }).optional(),
+      layout: z.enum(['HORIZONTAL', 'VERTICAL', 'NONE']).optional().describe('Change Auto Layout direction'),
+      layoutMode: z.enum(['HORIZONTAL', 'VERTICAL', 'NONE']).optional(),
+      layoutWrap: z.enum(['NO_WRAP', 'WRAP']).optional().describe('Auto Layout wrap'),
       gap: z.number().optional().describe('Auto Layout gap/spacing'),
-      padding: z.union([z.number(), z.object({ top: z.number().optional(), right: z.number().optional(), bottom: z.number().optional(), left: z.number().optional() })]).optional(),
+      counterAxisSpacing: z.number().optional().describe('Cross-axis spacing when wrapped'),
+      padding: z.union([
+        z.number(),
+        z.tuple([z.number(), z.number()]),
+        z.tuple([z.number(), z.number(), z.number(), z.number()]),
+        z.object({ top: z.number().optional(), right: z.number().optional(), bottom: z.number().optional(), left: z.number().optional() })
+      ]).optional(),
       alignItems: z.enum(['MIN', 'CENTER', 'MAX', 'SPACE_BETWEEN']).optional(),
       counterAlignItems: z.enum(['MIN', 'CENTER', 'MAX', 'BASELINE']).optional(),
+      counterAxisAlignContent: z.enum(['AUTO', 'SPACE_BETWEEN']).optional(),
       width: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional(),
       height: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional(),
+      layoutSizingHorizontal: z.enum(['FIXED', 'HUG', 'FILL']).optional(),
+      layoutSizingVertical: z.enum(['FIXED', 'HUG', 'FILL']).optional(),
+      minWidth: z.number().optional(),
+      maxWidth: z.number().optional(),
+      minHeight: z.number().optional(),
+      maxHeight: z.number().optional(),
+      layoutPositioning: z.enum(['AUTO', 'ABSOLUTE']).optional().describe('Set to ABSOLUTE for floating badges/close icons inside Auto Layout'),
+      layoutGrow: z.number().optional().describe('Flex grow (0 or 1)'),
+      layoutAlign: z.enum(['INHERIT', 'STRETCH']).optional(),
+      strokesIncludedInLayout: z.boolean().optional(),
+      itemReverseZIndex: z.boolean().optional(),
+      effects: z.array(EffectSchema).optional().describe('Elevation shadows and blurs'),
       visible: z.boolean().optional(),
       x: z.number().optional(),
       y: z.number().optional(),
-      imageUrl: z.string().optional().describe('Image URL or local file path to set as node fill')
+      imageUrl: z.string().optional().describe('Image URL or local file path to set as node fill'),
+      videoUrl: z.string().optional().describe('Video URL (.mp4/.mov) or local file path to set as node fill')
+    })
+  },
+  {
+    name: 'figma_set_auto_layout',
+    description: 'Enables or configures Auto Layout on any frame, group, or selection (equivalent to pressing Shift+A in Figma). Sets direction (HORIZONTAL/VERTICAL), wrap, gap, padding, alignment, and hug/fill sizing.',
+    inputSchema: z.object({
+      nodeId: z.string().optional().describe('Target node ID (defaults to active canvas selection if omitted)'),
+      layoutMode: z.enum(['HORIZONTAL', 'VERTICAL', 'NONE']).optional().default('VERTICAL').describe('Auto Layout direction'),
+      direction: z.enum(['HORIZONTAL', 'VERTICAL', 'NONE']).optional().describe('Alias for layoutMode'),
+      layoutWrap: z.enum(['NO_WRAP', 'WRAP']).optional().describe('Wrap child items onto multiple lines'),
+      gap: z.number().optional().describe('Spacing between items in px'),
+      itemSpacing: z.number().optional().describe('Alias for gap'),
+      counterAxisSpacing: z.number().optional().describe('Cross-axis spacing between wrapped rows/columns in px'),
+      padding: z.union([
+        z.number(),
+        z.tuple([z.number(), z.number()]),
+        z.tuple([z.number(), z.number(), z.number(), z.number()]),
+        z.object({ top: z.number().optional(), right: z.number().optional(), bottom: z.number().optional(), left: z.number().optional() })
+      ]).optional().describe('Internal padding in px'),
+      alignItems: z.enum(['MIN', 'CENTER', 'MAX', 'SPACE_BETWEEN']).optional().describe('Primary axis alignment'),
+      counterAlignItems: z.enum(['MIN', 'CENTER', 'MAX', 'BASELINE']).optional().describe('Cross axis alignment'),
+      width: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional().describe('Width: number, HUG, or FILL'),
+      height: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional().describe('Height: number, HUG, or FILL'),
+      strokesIncludedInLayout: z.boolean().optional(),
+      itemReverseZIndex: z.boolean().optional()
+    })
+  },
+  {
+    name: 'figma_create_component',
+    description: 'Creates a reusable master Component from a declarative layout tree or converts an existing Frame into a master Component.',
+    inputSchema: z.object({
+      nodeId: z.string().optional().describe('Optional ID of an existing Frame to convert into a master Component'),
+      spec: LayoutNodeSchema.optional().describe('Optional declarative layout tree to build directly as a master Component'),
+      name: z.string().optional().describe('Component name (e.g. "Button/Primary", "Card/Profile")'),
+      description: z.string().optional().describe('Component documentation / description shown in Figma assets panel'),
+      insertPosition: z.object({ x: z.number(), y: z.number() }).optional()
+    })
+  },
+  {
+    name: 'figma_create_component_set',
+    description: 'Combines multiple master Components into a single Variant Component Set (e.g. Button with Type=Primary/Secondary, State=Default/Hover/Active).',
+    inputSchema: z.object({
+      componentIds: z.array(z.string()).describe('Array of Component node IDs to combine as variants'),
+      name: z.string().optional().describe('Name of the component set (e.g. "Button", "Input")'),
+      description: z.string().optional().describe('Component set description')
+    })
+  },
+  {
+    name: 'figma_create_instance',
+    description: 'Creates an instance of an existing master Component or Component Set, with variant property overrides, text overrides, and responsive sizing.',
+    inputSchema: z.object({
+      componentId: z.string().describe('ID of the master Component or Component Set to instantiate'),
+      name: z.string().optional().describe('Optional instance layer name'),
+      x: z.number().optional().describe('Canvas X coordinate'),
+      y: z.number().optional().describe('Canvas Y coordinate'),
+      targetParentId: z.string().optional().describe('Parent Frame ID to nest the instance inside'),
+      variantProperties: z.record(z.string(), z.string()).optional().describe('Variant properties to set (e.g. { "State": "Hover", "Size": "Large" })'),
+      textOverrides: z.record(z.string(), z.string()).optional().describe('Key-value map of child text layer name -> replacement string (e.g. { "Label": "Sign Up" })'),
+      width: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional(),
+      height: z.union([z.number(), z.literal('HUG'), z.literal('FILL')]).optional()
+    })
+  },
+  {
+    name: 'figma_create_style',
+    description: 'Creates a reusable design system style in Figma: Paint (Color) style, Typography Text style, or Effect (Elevation/Shadow/Blur) style.',
+    inputSchema: z.object({
+      styleType: z.enum(['PAINT', 'TEXT', 'EFFECT']).describe('Type of design system style to create'),
+      name: z.string().describe('Style name (e.g. "Brand/Primary", "Typography/H1", "Elevation/Card Shadow")'),
+      description: z.string().optional().describe('Style description'),
+      color: z.string().optional().describe('Hex color for PAINT style (e.g. "#0D99FF")'),
+      opacity: z.number().min(0).max(1).optional().describe('Opacity for PAINT style'),
+      fontFamily: z.string().optional().describe('Font family for TEXT style'),
+      fontWeight: z.string().optional().describe('Font weight for TEXT style (e.g. "SemiBold", "Bold")'),
+      fontSize: z.number().optional().describe('Font size in px for TEXT style'),
+      lineHeight: z.union([z.number(), z.literal('AUTO')]).optional(),
+      letterSpacing: z.number().optional(),
+      effects: z.array(EffectSchema).optional().describe('Array of effects for EFFECT style (e.g. drop shadow)')
+    })
+  },
+  {
+    name: 'figma_apply_style',
+    description: 'Binds a design system style (by name or ID) to an existing node’s fill, stroke, text, or effects.',
+    inputSchema: z.object({
+      nodeId: z.string().describe('Target node ID'),
+      styleType: z.enum(['FILL', 'STROKE', 'TEXT', 'EFFECT']).describe('Which property to bind the style to'),
+      styleId: z.string().optional().describe('Figma style ID (e.g. "S:123...")'),
+      styleName: z.string().optional().describe('Figma style name to match (e.g. "Brand/Primary") if ID is unknown')
+    })
+  },
+  {
+    name: 'figma_get_variables',
+    description: 'Retrieves all Figma Variables and Design Tokens organized by collection and modes (e.g. Light/Dark mode colors, spacing numbers).',
+    inputSchema: z.object({
+      collectionId: z.string().optional().describe('Optional collection ID to filter variables')
+    })
+  },
+  {
+    name: 'figma_create_variable',
+    description: 'Creates a Figma Variable (Design Token) in a collection with values for modes (COLOR, FLOAT, STRING, or BOOLEAN).',
+    inputSchema: z.object({
+      collectionName: z.string().optional().default('Tokens').describe('Variable collection name (e.g. "Tokens", "Colors")'),
+      name: z.string().describe('Variable name (e.g. "color/brand/primary", "spacing/md")'),
+      resolvedType: z.enum(['COLOR', 'FLOAT', 'STRING', 'BOOLEAN']).describe('Variable data type'),
+      value: z.any().describe('Value for default mode (hex string for COLOR, number for FLOAT, etc.)'),
+      modeName: z.string().optional().describe('Optional mode name')
+    })
+  },
+  {
+    name: 'figma_group_nodes',
+    description: 'Groups multiple nodes on the canvas into a single Group container.',
+    inputSchema: z.object({
+      nodeIds: z.array(z.string()).describe('Array of node IDs to group together'),
+      name: z.string().optional().describe('Optional name for the group')
+    })
+  },
+  {
+    name: 'figma_boolean_operation',
+    description: 'Performs a vector Boolean operation (UNION, SUBTRACT, INTERSECT, EXCLUDE) on selected shapes or layers.',
+    inputSchema: z.object({
+      operation: z.enum(['UNION', 'SUBTRACT', 'INTERSECT', 'EXCLUDE']).describe('Boolean operation type'),
+      nodeIds: z.array(z.string()).describe('Array of 2 or more shape node IDs to combine'),
+      name: z.string().optional().describe('Optional name for the resulting boolean layer')
     })
   },
   {
@@ -223,6 +459,23 @@ export const toolsDefinitions = [
     inputSchema: z.object({
       parentId: z.string().describe('Target parent frame ID'),
       children: z.array(LayoutNodeSchema).describe('New replacement child nodes')
+    })
+  },
+  {
+    name: 'figma_get_speaker_notes',
+    description: 'Figma Slides only: reads the presenter (speaker) notes of slides. Omit nodeIds to read every slide in deck order.',
+    inputSchema: z.object({
+      nodeIds: z.array(z.string()).optional().describe('Slide node IDs to read (defaults to all slides in grid order)')
+    })
+  },
+  {
+    name: 'figma_set_speaker_notes',
+    description: 'Figma Slides only: writes presenter (speaker) notes shown in Presenter View. Accepts markdown (bullet lists, bold, italic, strikethrough). Batch many slides in one call.',
+    inputSchema: z.object({
+      notes: z.array(z.object({
+        nodeId: z.string().describe('SLIDE node ID (e.g. "1:42")'),
+        notes: z.string().describe('Markdown notes text; empty string clears the notes')
+      })).min(1).describe('One entry per slide to update')
     })
   },
   {
@@ -285,9 +538,9 @@ export const toolsDefinitions = [
   },
   {
     name: 'figma_execute_code',
-    description: 'Executes arbitrary JavaScript/TypeScript directly inside the Figma Plugin sandbox. Accesses figma.* API for power-user operations.',
+    description: 'Executes arbitrary JavaScript/TypeScript directly inside the Figma Plugin sandbox. First-class globals in scope: "figma", "createAutoLayout", "createFrame", "createText", "createRectangle", "createEllipse", "createComponent", "createInstance", "loadFont", "solidPaint", "rgb", "rgba", "dropShadow", "innerShadow", "blur", "findNode", "findNodes".',
     inputSchema: z.object({
-      code: z.string().describe('JavaScript code to run in Figma sandbox. "figma" is in scope. Return values will be serialized.')
+      code: z.string().describe('JavaScript code to run in Figma sandbox. "figma" and "createAutoLayout" are in scope. Return values will be serialized.')
     })
   },
   {
@@ -304,5 +557,25 @@ export const toolsDefinitions = [
     name: 'figma_redo',
     description: 'Performs a redo operation in Figma.',
     inputSchema: z.object({})
+  }
+];
+
+const targetFileSchema = z.string().optional().describe(
+  'Target Figma file when several are connected: file name (or part of it), fileKey, or instance id from figma_get_status. Defaults to the most recently connected file.'
+);
+
+export const toolsDefinitions = [
+  ...baseToolDefinitions.map(def => ({
+    ...def,
+    inputSchema: def.inputSchema instanceof z.ZodObject
+      ? def.inputSchema.extend({ file: targetFileSchema })
+      : def.inputSchema
+  })),
+  {
+    name: 'figma_set_active_file',
+    description: 'Sets the default Figma file used by tools that omit the file parameter.',
+    inputSchema: z.object({
+      file: z.string().describe('Figma file name (or part of it), fileKey, or client id from figma_get_status')
+    })
   }
 ];

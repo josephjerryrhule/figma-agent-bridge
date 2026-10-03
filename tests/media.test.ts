@@ -49,4 +49,25 @@ describe('Media Resolver', () => {
     expect((resolved as any).children[0].base64).toBe('fakebase64');
     expect((resolved as any).children[1].svg).toBe('<svg></svg>');
   });
+
+  it('preserves and resolves VIDEO nodes in layout trees', async () => {
+    const tree: LayoutNode = {
+      type: 'FRAME',
+      name: 'Video Container',
+      children: [
+        {
+          type: 'VIDEO',
+          name: 'Demo Video',
+          base64: 'fakevideobase64',
+          width: 640,
+          height: 360
+        }
+      ]
+    };
+
+    const resolved = await resolveLayoutTreeMedia(tree);
+    expect(resolved.type).toBe('FRAME');
+    expect((resolved as any).children[0].type).toBe('VIDEO');
+    expect((resolved as any).children[0].base64).toBe('fakevideobase64');
+  });
 });
