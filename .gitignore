@@ -5,3 +5,7 @@ server/dist/
 *.log
 .DS_Store
 coverage/
+
+# Local case study screenshots, not part of the bridge
+docs/case-study/shots/
+figma/shots/
