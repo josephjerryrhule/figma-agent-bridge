@@ -155,6 +155,9 @@ export function createMcpServer(wsBridge: WebSocketBridge, configuredAgent?: str
         case 'figma_redo':
           command = 'REDO';
           break;
+        case 'figma_set_ui_mode':
+          command = 'SET_UI_MODE';
+          break;
         default:
           return {
             content: [{ type: 'text', text: `Error: Unknown tool '${name}'` }],

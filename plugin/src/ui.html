@@ -345,6 +345,74 @@
     .btn.primary:hover {
       background: #e4e4e7;
     }
+
+    /* Header Window Controls */
+    .top-right-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .window-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 2px;
+    }
+
+    .win-btn {
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .win-btn:hover {
+      background: var(--surface-hover);
+      color: #ffffff;
+      border-color: var(--border);
+    }
+
+    /* Mini Pill Mode */
+    body.mini-mode {
+      padding: 0 10px;
+      height: 100vh;
+      justify-content: center;
+    }
+
+    body.mini-mode .top-bar {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+      width: 100%;
+    }
+
+    body.mini-mode .brand-title {
+      display: none;
+    }
+
+    body.mini-mode .agent-panel,
+    body.mini-mode .section-header,
+    body.mini-mode .activity-stream,
+    body.mini-mode .toolbar {
+      display: none !important;
+    }
+
+    body.mini-mode #btnMinimize {
+      display: none !important;
+    }
+
+    body.mini-mode #btnExpand {
+      display: inline-flex !important;
+    }
   </style>
 </head>
 <body>
@@ -353,9 +421,30 @@
       <div class="brand-mark"></div>
       <div class="brand-title">Agent Bridge</div>
     </div>
-    <div class="status-pill" id="statusBadge">
-      <span class="status-dot" id="statusDot"></span>
-      <span id="statusText">3055 · Disconnected</span>
+    <div class="top-right-group">
+      <div class="status-pill" id="statusBadge" title="Status (click to ping, double-click to toggle size)">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">3055 · Disconnected</span>
+      </div>
+      <div class="window-controls">
+        <button class="win-btn" id="btnMinimize" title="Minimize to Mini-Pill">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3">
+            <line x1="1.5" y1="5" x2="8.5" y2="5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="win-btn" id="btnExpand" title="Expand Panel" style="display: none;">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3">
+            <path d="M6 1.5H8.5V4M4 8.5H1.5V6M8.5 1.5L5.5 4.5M1.5 8.5L4.5 5.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="win-btn" id="btnHide" title="Hide to Background">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">
+            <path d="M1.5 6s2-3.5 4.5-3.5S10.5 6 10.5 6s-2 3.5-4.5 3.5S1.5 6 1.5 6z"/>
+            <circle cx="6" cy="6" r="1.5"/>
+            <line x1="2" y1="10" x2="10" y2="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -607,6 +696,11 @@
         return;
       }
 
+      if (msg.type === 'APPLY_UI_MODE') {
+        setUiMode(msg.mode);
+        return;
+      }
+
       const agent = msg.agent || activeAgentCategory || 'Agent';
       const cmd = msg.command || 'DONE';
 
@@ -644,6 +738,71 @@
 
     document.getElementById('btnReconnect').onclick = () => {
       connectWebSocket();
+    };
+
+    const btnMinimize = document.getElementById('btnMinimize');
+    const btnExpand = document.getElementById('btnExpand');
+    const btnHide = document.getElementById('btnHide');
+
+    function setUiMode(mode) {
+      if (mode === 'mini') {
+        document.body.classList.add('mini-mode');
+        btnMinimize.style.display = 'none';
+        btnExpand.style.display = 'inline-flex';
+      } else {
+        document.body.classList.remove('mini-mode');
+        btnMinimize.style.display = 'inline-flex';
+        btnExpand.style.display = 'none';
+      }
+    }
+
+    btnMinimize.onclick = () => {
+      setUiMode('mini');
+      parent.postMessage({
+        pluginMessage: {
+          type: 'RESIZE_UI',
+          mode: 'mini',
+          width: 230,
+          height: 38
+        }
+      }, '*');
+    };
+
+    btnExpand.onclick = () => {
+      setUiMode('full');
+      parent.postMessage({
+        pluginMessage: {
+          type: 'RESIZE_UI',
+          mode: 'full',
+          width: 360,
+          height: 520
+        }
+      }, '*');
+    };
+
+    btnHide.onclick = () => {
+      parent.postMessage({
+        pluginMessage: {
+          type: 'HIDE_UI'
+        }
+      }, '*');
+    };
+
+    // Double-click top-bar to toggle modes
+    document.querySelector('.top-bar').ondblclick = (e) => {
+      if (e.target && e.target.closest('button')) return;
+      if (document.body.classList.contains('mini-mode')) {
+        btnExpand.click();
+      } else {
+        btnMinimize.click();
+      }
+    };
+
+    // Click status badge in mini-mode to ping
+    document.getElementById('statusBadge').onclick = () => {
+      if (document.body.classList.contains('mini-mode')) {
+        document.getElementById('btnPing').click();
+      }
     };
 
     parent.postMessage({ pluginMessage: { type: 'UI_READY' } }, '*');

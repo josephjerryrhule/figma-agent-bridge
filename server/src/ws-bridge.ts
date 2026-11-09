@@ -236,6 +236,7 @@ export class WebSocketBridge {
       case 'SET_SPEAKER_NOTES': return { path: '/v1/speaker-notes', method: 'POST' };
       case 'UNDO': return { path: '/v1/undo', method: 'POST' };
       case 'REDO': return { path: '/v1/redo', method: 'POST' };
+      case 'SET_UI_MODE': return { path: '/v1/ui-mode', method: 'POST' };
       default: return { path: '/v1/status', method: 'GET' };
     }
   }

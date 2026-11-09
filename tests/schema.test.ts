@@ -118,6 +118,14 @@ describe('Declarative Layout Schema & Senior Designer Tools', () => {
     expect(tool.inputSchema.safeParse({ notes: [{ notes: 'missing id' }] }).success).toBe(false);
   });
 
+  it('validates figma_set_ui_mode input', () => {
+    const tool = toolsDefinitions.find((t: any) => t.name === 'figma_set_ui_mode') as any;
+    expect(tool.inputSchema.safeParse({ mode: 'mini' }).success).toBe(true);
+    expect(tool.inputSchema.safeParse({ mode: 'headless' }).success).toBe(true);
+    expect(tool.inputSchema.safeParse({ mode: 'tiny' }).success).toBe(false);
+    expect(tool.inputSchema.safeParse({}).success).toBe(false);
+  });
+
   it('rejects an invalid node type', () => {
     const invalid = {
       type: 'INVALID_TYPE',
@@ -150,6 +158,7 @@ describe('Declarative Layout Schema & Senior Designer Tools', () => {
     expect(toolNames).toContain('figma_get_session_history');
     expect(toolNames).toContain('figma_undo');
     expect(toolNames).toContain('figma_redo');
+    expect(toolNames).toContain('figma_set_ui_mode');
 
     // Figma Slides
     expect(toolNames).toContain('figma_get_speaker_notes');

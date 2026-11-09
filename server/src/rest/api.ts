@@ -367,6 +367,16 @@ export function createHttpHandler(wsBridge: WebSocketBridge, serverPort = 3055) 
             sendJson(200, { success: true, data });
             return;
           }
+
+          case '/v1/ui-mode': {
+            if (!['full', 'mini', 'headless'].includes(body.mode)) {
+              sendJson(400, { success: false, error: 'Missing or invalid "mode" in body: one of "full", "mini", "headless"' });
+              return;
+            }
+            const data = await send('SET_UI_MODE', { mode: body.mode }, 20000);
+            sendJson(200, { success: true, data });
+            return;
+          }
         }
       }
 

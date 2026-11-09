@@ -213,6 +213,7 @@ In Cursor: **Settings > Features > MCP > Add New MCP Server**:
 | **`figma_get_session_history`**| `{}` | Returns all nodes modified by the AI during the active session. |
 | **`figma_undo`** | `{}` | Reverts the last canvas action. |
 | **`figma_redo`** | `{}` | Re-applies the most recently undone action. |
+| **`figma_set_ui_mode`** | `{ mode: 'full' \| 'mini' \| 'headless' }` | Shows the plugin as the full panel or a mini pill, or hides it while the bridge keeps running (REST: `POST /v1/ui-mode`). |
 
 ---
 

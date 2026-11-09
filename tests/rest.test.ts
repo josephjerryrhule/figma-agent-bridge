@@ -63,6 +63,19 @@ describe('REST API & OpenAPI Endpoints', () => {
     expect(json.error).toContain('Missing "root"');
   });
 
+  it('rejects POST /v1/ui-mode with 400 when mode is invalid', async () => {
+    const res = await fetch(`http://localhost:${port}/v1/ui-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'tiny' })
+    });
+    expect(res.status).toBe(400);
+
+    const json = (await res.json()) as any;
+    expect(json.success).toBe(false);
+    expect(json.error).toContain('"mode"');
+  });
+
   it('rejects POST /v1/update with 400 when missing target id', async () => {
     const res = await fetch(`http://localhost:${port}/v1/update`, {
       method: 'POST',

@@ -33,7 +33,8 @@ export type BridgeCommandType =
   | 'SET_SPEAKER_NOTES'
   | 'GET_SESSION_HISTORY'
   | 'UNDO'
-  | 'REDO';
+  | 'REDO'
+  | 'SET_UI_MODE';
 
 export interface BridgeRequest<T = any> {
   id: string;

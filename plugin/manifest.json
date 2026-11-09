@@ -10,6 +10,16 @@
     "figma",
     "slides"
   ],
+  "menu": [
+    {
+      "name": "Open Bridge (Panel / Mini-Pill)",
+      "command": "open-ui"
+    },
+    {
+      "name": "Run in Background (Headless)",
+      "command": "run-headless"
+    }
+  ],
   "networkAccess": {
     "allowedDomains": [
       "*"

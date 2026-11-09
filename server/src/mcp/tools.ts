@@ -557,6 +557,13 @@ const baseToolDefinitions = [
     name: 'figma_redo',
     description: 'Performs a redo operation in Figma.',
     inputSchema: z.object({})
+  },
+  {
+    name: 'figma_set_ui_mode',
+    description: 'Changes how the bridge plugin window shows in Figma: "full" is the 360x520 panel, "mini" is a small status pill, "headless" hides the window while the bridge keeps running. Mini and full are remembered for the next launch; run the plugin from the Plugins menu to bring a hidden window back.',
+    inputSchema: z.object({
+      mode: z.enum(['full', 'mini', 'headless']).describe('Window mode for the bridge plugin UI')
+    })
   }
 ];
 

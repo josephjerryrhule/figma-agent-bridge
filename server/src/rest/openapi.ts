@@ -541,6 +541,30 @@ export function getOpenApiSpec(serverUrl = 'http://localhost:3055') {
             '200': { description: 'Execution result' }
           }
         }
+      },
+      '/v1/ui-mode': {
+        post: {
+          summary: 'Switch the bridge plugin window between full panel, mini pill and headless',
+          operationId: 'setUiMode',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['mode'],
+                  properties: {
+                    mode: { type: 'string', enum: ['full', 'mini', 'headless'] }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Applied mode' },
+            '400': { description: 'Missing or invalid mode' }
+          }
+        }
       }
     }
   };

@@ -26,13 +26,20 @@ import {
 import { getSandboxHelpers, createFigmaSandboxProxy } from './engine/sandbox-helpers';
 import { getSpeakerNotes, setSpeakerNotes } from './engine/slides';
 
-// Show compact sidebar UI
+const isHeadless = figma.command === 'run-headless';
+
+// Show compact sidebar UI or run headless in the background
 figma.showUI(__html__, {
   width: 360,
   height: 520,
   title: 'Agent Canvas Bridge',
-  themeColors: true
+  themeColors: true,
+  visible: !isHeadless
 });
+
+if (isHeadless) {
+  figma.notify('Agent Bridge running in background (headless). Run from Plugins menu to restore panel.', { timeout: 4000 });
+}
 
 const pluginInstanceId = `plugin_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 const getPluginInfo = (): PluginConnectionInfo => ({
@@ -50,11 +57,42 @@ const sessionTouchedNodeIds = new Set<string>();
 /**
  * Main message handler receiving commands forwarded by the UI iframe WebSocket client.
  */
-figma.ui.onmessage = async (msg: BridgeRequest | { type?: string }) => {
+figma.ui.onmessage = async (msg: BridgeRequest | { type?: string; [key: string]: any }) => {
   if ((msg as { type?: string })?.type === 'UI_READY') {
     postPluginInfo();
+    if (!isHeadless) {
+      figma.clientStorage.getAsync('bridge_ui_mode').then((savedMode) => {
+        if (savedMode === 'mini') {
+          figma.ui.resize(230, 38);
+          figma.ui.postMessage({ type: 'APPLY_UI_MODE', mode: 'mini' });
+        }
+      }).catch(() => {});
+    }
     return;
   }
+
+  if ((msg as { type?: string })?.type === 'RESIZE_UI') {
+    const resizeMsg = msg as { type: string; width: number; height: number; mode?: 'mini' | 'full' };
+    const w = resizeMsg.width || 360;
+    const h = resizeMsg.height || 520;
+    figma.ui.resize(w, h);
+    if (resizeMsg.mode) {
+      figma.clientStorage.setAsync('bridge_ui_mode', resizeMsg.mode).catch(() => {});
+    }
+    return;
+  }
+
+  if ((msg as { type?: string })?.type === 'HIDE_UI') {
+    figma.ui.hide();
+    figma.notify('Agent Bridge running in background. Run from Plugins menu to restore panel.', { timeout: 4000 });
+    return;
+  }
+
+  if ((msg as { type?: string })?.type === 'SHOW_UI') {
+    figma.ui.show();
+    return;
+  }
+
   if (!msg || !('command' in msg) || !msg.command) return;
 
   const startTime = Date.now();
@@ -331,6 +369,28 @@ figma.ui.onmessage = async (msg: BridgeRequest | { type?: string }) => {
         // @ts-ignore
         if (typeof figma.redo === 'function') figma.redo();
         response.data = { redone: true };
+        break;
+      }
+
+      case 'SET_UI_MODE': {
+        const mode = msg.payload?.mode;
+        if (mode === 'headless' || mode === 'hide') {
+          figma.ui.hide();
+          figma.notify('Agent Bridge running in background (headless). Run from Plugins menu to restore panel.', { timeout: 4000 });
+          response.data = { mode: 'headless' };
+        } else if (mode === 'mini') {
+          figma.ui.show();
+          figma.ui.resize(230, 38);
+          figma.ui.postMessage({ type: 'APPLY_UI_MODE', mode: 'mini' });
+          figma.clientStorage.setAsync('bridge_ui_mode', 'mini').catch(() => {});
+          response.data = { mode: 'mini' };
+        } else {
+          figma.ui.show();
+          figma.ui.resize(360, 520);
+          figma.ui.postMessage({ type: 'APPLY_UI_MODE', mode: 'full' });
+          figma.clientStorage.setAsync('bridge_ui_mode', 'full').catch(() => {});
+          response.data = { mode: 'full' };
+        }
         break;
       }
 
